@@ -115,6 +115,14 @@ export function debounce(fn, ms) {
   return wrapped;
 }
 
+/** Middle value, averaging the two middles on an even count. */
+export function median(numbers) {
+  const xs = numbers.filter((n) => Number.isFinite(n)).sort((a, b) => a - b);
+  if (!xs.length) return null;
+  const mid = xs.length >> 1;
+  return xs.length % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+}
+
 /** Deterministic PRNG so the daily puzzle is the same for everyone. */
 export function mulberry32(seed) {
   let a = seed >>> 0;

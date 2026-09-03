@@ -36,6 +36,9 @@
   --bad: #bf3c2c;
   --bad-wash: #fee7e6;
 
+  --hit-wash: #fdf1b8;  /* a link the filter matched */
+  --hit-ring: #a16207;  /* the one you are stood on  */
+
   --shadow: 0 1px 3px rgba(0, 0, 0, .1);
   --radius: 2px;
 
@@ -71,6 +74,8 @@
     --warn: #e0b400;
     --bad: #fd7865;
     --bad-wash: #3a2321;
+    --hit-wash: #3f3410;
+    --hit-ring: #d9a441;
     --shadow: 0 1px 4px rgba(0, 0, 0, .55);
   }
 }
@@ -99,6 +104,8 @@
   --warn: #e0b400;
   --bad: #fd7865;
   --bad-wash: #3a2321;
+  --hit-wash: #3f3410;
+  --hit-ring: #d9a441;
   --shadow: 0 1px 4px rgba(0, 0, 0, .55);
 }
 
@@ -343,6 +350,10 @@ a { color: var(--link); }
   display: block; font-size: .7rem; text-transform: uppercase;
   letter-spacing: .05em; color: var(--ink-2); margin-top: 3px;
 }
+.stat-sub {
+  display: block; font-size: .68rem; color: var(--muted); margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
 
 .history { list-style: none; margin: 0; padding: 0; }
 .history li {
@@ -354,12 +365,18 @@ a { color: var(--link); }
 .h-mark { width: 1em; color: var(--good); }
 .history li.lost .h-mark { color: var(--bad); }
 .h-race {
-  font: inherit; flex: 1; text-align: left; background: none; border: 0;
-  color: var(--link); cursor: pointer; padding: 0;
+  flex: 1; min-width: 0; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.h-race:hover { text-decoration: underline; }
 .h-score { color: var(--ink-2); font-family: var(--mono); font-size: .8rem; }
+
+/* The replay control carries its own label rather than hiding inside the
+   race name, which read as a record of the run and not as a button. */
+.h-again { flex: 0 0 auto; padding: 2px 8px; font-size: .8rem; white-space: nowrap; }
+
+.custom-difficulty { margin-top: 10px; }
+
+.history-more { margin-top: 8px; padding-left: 0; }
 
 .site-foot { margin-top: 30px; }
 .settings {
@@ -517,6 +534,25 @@ a { color: var(--link); }
   margin: 0 auto;
   padding-top: 20px;
 }
+/* Nothing floats when images are off, so the column has to hold the measure. */
+.article-host.no-images { max-width: 600px; }
+
+.race-error {
+  border: 1px solid var(--line-3);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  margin-top: 40px;
+}
+.race-error h2 {
+  font-family: var(--serif);
+  font-weight: 400;
+  font-size: 1.5rem;
+  margin: 0 0 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--line-3);
+}
+.race-error p { color: var(--ink); margin: 12px 0 18px; }
 
 .loading {
   position: sticky; bottom: 20px;
@@ -799,10 +835,167 @@ a { color: var(--link); }
   .wg-article .thumb {
     float: none; width: fit-content; max-width: 100%; margin: .5em auto 1.2em;
   }
-  .hud-trail { flex-wrap: wrap; }
+  .hud-trail { flex-wrap: wrap; gap: 6px; }
   /* `flex: 1` would ignore a width, so give the trail its own row by basis. */
   .trail { order: 3; flex: 1 1 100%; }
-  .hud-actions { margin-left: auto; }
+  .hud-actions { margin-left: auto; gap: 5px; }
   .crumb { max-width: 140px; }
+  /* Four controls plus Back only fit across a phone once Back is its arrow. */
+  .btn-word { display: none; }
+  .h-again .btn-word { display: inline; }
+  .hud-trail .btn-mini { padding: 4px 7px; font-size: .78rem; }
+  .hud-find { gap: 5px; }
+  .find-count { font-size: .72rem; }
   .article-host { padding-top: 16px; }
+}
+
+/* ------------------------------------------------- find & contents ----- */
+
+.hud-find { gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); margin-top: 6px; }
+.hud-find input {
+  flex: 1; min-width: 0;
+  font: inherit; font-size: .9rem;
+  padding: 5px 9px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--line-2); border-radius: var(--radius);
+}
+.hud-find input:focus { outline: 0; border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); }
+.find-count {
+  flex: 0 0 auto; font-size: .78rem; color: var(--ink-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+.contents-menu {
+  position: absolute; z-index: 20;
+  right: max(12px, env(safe-area-inset-right)); left: auto;
+  margin-top: 4px;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(58vh, 460px); overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--line-3); border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 8px 0;
+}
+.contents-head {
+  margin: 0 12px 6px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: .7rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted);
+}
+.contents-list { display: flex; flex-direction: column; }
+.contents-item {
+  font: inherit; font-size: .88rem; text-align: left;
+  background: transparent; border: 0; cursor: pointer;
+  color: var(--link); padding: 5px 12px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.contents-item:hover { background: var(--link-wash); }
+.contents-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.contents-item.lvl-3 { padding-left: 26px; font-size: .82rem; color: var(--ink-2); }
+
+/* Filtering never hides a link — it drains the ones that do not match, so the
+   shape of the page stays put and the matches are the only thing lit. */
+.article-host.is-filtering .wg-article a.wg-link {
+  color: var(--muted); text-decoration: none; opacity: .55;
+}
+.article-host.is-filtering .wg-article a.wg-link.wg-hit {
+  color: var(--link); opacity: 1;
+  background: var(--hit-wash); box-shadow: 0 0 0 2px var(--hit-wash);
+  border-radius: 1px;
+}
+/* The match you are stood on is marked by a ring rather than a stronger fill:
+   a heavier wash under link-blue text drops below a readable contrast. */
+.article-host.is-filtering .wg-article a.wg-link.wg-current-hit {
+  outline: 2px solid var(--hit-ring); outline-offset: 1px;
+  font-weight: 700;
+}
+
+/* --------------------------------------------------- shortest route ---- */
+
+.result-best { margin-bottom: 14px; }
+.best-working { display: flex; align-items: center; gap: 8px; }
+.best-working .spinner { width: 13px; height: 13px; border-width: 2px; }
+.best-chain { margin: 0 0 4px; color: var(--ink); }
+.best-none { margin: 0 0 4px; color: var(--ink); }
+
+@media (max-width: 640px) {
+  .contents-menu { right: 12px; }
+  .hud-actions { flex-wrap: wrap; }
+}
+
+/* ------------------------------------------- thin articles & conditions -- */
+
+/* An article you can barely leave is worth saying out loud on arrival, so it
+   reads as a warning rather than the usual grey link tally. */
+.article-meta.is-dead-end {
+  color: var(--warn);
+  font-size: .84rem;
+  font-weight: 700;
+}
+
+/* `.site-foot .muted` drops to --muted, which is the right weight for the
+   attribution line but lands at 4.3:1 — under the threshold for instructional
+   copy this size. This note explains a difficulty setting, so it keeps --ink-2. */
+.site-foot .settings-note { max-width: 62ch; margin-top: 12px; color: var(--ink-2); }
+.result-note { margin: -4px 0 12px; }
+
+/* --------------------------------------------------------- the measure -- */
+
+/* The column is 740px so infoboxes and wide tables have room, but a paragraph
+   running the full width of it is 97 characters a line — half again past what
+   is comfortable to read. Cap the prose rather than the container, so the
+   floats keep their space and only full-width text is reined in. Text already
+   wrapping beside an infobox is narrower than this and is untouched. */
+.wg-article p,
+.wg-article li,
+.wg-article dd,
+.wg-article blockquote {
+  max-width: 38em;
+}
+
+/* Anything laid out in a box sets its own width and must keep it. */
+.wg-article table p, .wg-article table li, .wg-article table dd,
+.wg-article .infobox p, .wg-article .infobox li,
+.wg-article figure p, .wg-article figcaption,
+.wg-article .thumb p, .wg-article .thumbcaption,
+.wg-article .wg-navbox p, .wg-article .wg-navbox li, .wg-article .wg-navbox dd,
+.wg-article .gallery li {
+  max-width: none;
+}
+
+/* ------------------------------------------------------------- the crowd -- */
+
+/* Not muted: on the daily this is the only line about anybody but you, and it
+   is the whole point of a shared board. */
+.crowd-line {
+  margin: 10px 0 0;
+  padding: 7px 11px;
+  font-size: .87rem;
+  color: var(--ink);
+  background: var(--link-wash);
+  border: 1px solid var(--line-2);
+  border-radius: var(--radius);
+}
+#result-crowd { margin: 0 0 14px; }
+
+/* ---------------------------------------------------------- route hops -- */
+
+/* A finished route is a reading list. These are the only real links the game
+   ever renders — every link on the board itself is defused — so they carry the
+   external-link underline the board deliberately withholds. */
+.path-hop {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: var(--line-2);
+  text-underline-offset: 2px;
+}
+.path-hop:hover { color: var(--link-hover); text-decoration-color: currentColor; }
+.path-hop:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.path-arrow { color: var(--muted); margin: 0 .35em; }
+
+/* The banner wraps once the board note is in it. */
+.challenge-banner { flex-wrap: wrap; }
+.cb-note {
+  flex-basis: 100%;
+  font-size: .8rem;
+  color: var(--ink-2);
 }

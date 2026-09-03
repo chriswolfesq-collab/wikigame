@@ -6,7 +6,7 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  * Routes:
  *   #/                          home
  *   #/race/Start/Target         open race
- *   #/race/Start/Target?ms=..&clicks=..&h=..&by=Name&p=A|B|C&daily=7
+ *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&by=Name&p=A|B|C&daily=7
  *                               a finished run — opens on the result, then races
  */
 export function parseHash(hash = location.hash) {
@@ -23,6 +23,8 @@ export function parseHash(hash = location.hash) {
             ms: Number(q.get('ms')) || null,
             clicks: q.has('clicks') ? Number(q.get('clicks')) : null,
             hints: Number(q.get('h')) || 0,
+            // Absent means the default (on); only the harder board is recorded.
+            navboxes: q.has('nb') ? q.get('nb') !== '0' : null,
             by: q.get('by') || null,
             path: q.get('p') ? decodePath(q.get('p')) : null
           }
@@ -87,12 +89,13 @@ const MAX_URL = 1800;
  * A link that carries a finished run: the score, and the route taken so the
  * opener can reveal it once they are done arguing with it.
  */
-export function challengeUrl({ start, target, ms, clicks, hints, by, dailyNumber, path }) {
+export function challengeUrl({ start, target, ms, clicks, hints, navboxes, by, dailyNumber, path }) {
   const build = (withPath) => {
     const q = new URLSearchParams();
     q.set('ms', String(Math.round(ms)));
     q.set('clicks', String(clicks));
     if (hints) q.set('h', String(hints));
+    if (navboxes === false) q.set('nb', '0');
     if (by) q.set('by', by);
     if (dailyNumber) q.set('daily', String(dailyNumber));
     if (withPath && path && path.length > 1) q.set('p', encodePath(path));
@@ -103,13 +106,36 @@ export function challengeUrl({ start, target, ms, clicks, hints, by, dailyNumber
   return full.length <= MAX_URL ? full : build(false);
 }
 
-export function resultText({ start, target, ms, clicks, won, dailyNumber, hints, url }) {
+// One link per click. Past the cap a chain stops reading as a shape and starts
+// wrapping in chat apps, so it collapses to a count.
+const CHAIN_MAX = 12;
+
+function chain(clicks) {
+  if (clicks < 1) return '🏁';
+  return clicks <= CHAIN_MAX ? '🔗'.repeat(clicks) : `🔗×${clicks}`;
+}
+
+/**
+ * The block you paste into a group chat.
+ *
+ * It deliberately does not name the two articles. Half the people reading have
+ * not played today's daily yet, and the matchup is the one thing this game can
+ * spoil — the old share text put it in the second line. The link still carries
+ * the board for anyone who wants to play it.
+ */
+export function shareBlock({ ms, clicks, won, dailyNumber, hints, backs, navboxes, url }) {
   const head = dailyNumber ? `The Wikipedia Game — Daily #${dailyNumber}` : 'The Wikipedia Game';
-  const line = `${start} → ${target}`;
-  const score = won
-    ? `${clicks} click${clicks === 1 ? '' : 's'} · ${fmtTimeShort(ms)}${hints ? ` · ${hints} peek${hints === 1 ? '' : 's'}` : ''}`
-    : 'Gave up 🏳️';
-  return [head, line, score, '', won ? 'Beat me:' : 'Your turn:', url].join('\n');
+
+  const score = [`${clicks} click${clicks === 1 ? '' : 's'}`, fmtTimeShort(ms)];
+  if (hints) score.push(`👁 ${hints}`);
+  if (backs) score.push(`↩ ${backs}`);
+  if (navboxes === false) score.push('no navboxes');
+
+  const body = won
+    ? [chain(clicks), score.join(' · ')]
+    : ['🏳️', `Gave up · ${fmtTimeShort(ms)}`];
+
+  return [head, ...body, '', won ? `Beat me: ${url}` : `Your turn: ${url}`].join('\n');
 }
 
 export function pathText(path) {

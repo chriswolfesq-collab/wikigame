@@ -30,6 +30,8 @@
         <li>You are given a target article.</li>
         <li>Get there by clicking links inside the article — nothing else.</li>
         <li>No search box, no URL bar, no back-button-into-Google. Fewest clicks and fastest time win.</li>
+        <li><strong>Back</strong> costs five seconds a step and does not undo a click. Explore as much as you like — it goes on the clock, not on your route.</li>
+        <li><strong>Contents</strong> jumps to a section and <strong>Find</strong> filters the links on the page. Both are free and unlimited — knowing which link to look for is the game, hunting for it in nineteen sections is not.</li>
       </ol>
       <p class="rules-note">Everyone who opens the same challenge link races the exact same board.</p>
     </details>
@@ -44,6 +46,7 @@
         <button class="btn btn-primary" id="btn-daily">Play today's race</button>
         <p class="muted" id="daily-status"></p>
       </div>
+      <p class="crowd-line" id="daily-crowd" hidden></p>
     </section>
 
     <section class="card">
@@ -85,6 +88,7 @@
         <button class="btn btn-primary" id="btn-custom">Start race</button>
         <p class="muted" id="custom-status"></p>
       </div>
+      <p class="muted small custom-difficulty" id="custom-difficulty" role="status" hidden></p>
     </section>
 
     <section class="card" id="stats-card">
@@ -99,7 +103,7 @@
     <footer class="site-foot">
       <div class="settings">
         <label class="switch"><input type="checkbox" id="opt-images"> <span>Show images</span></label>
-        <label class="switch"><input type="checkbox" id="opt-navboxes"> <span>Show navigation boxes</span></label>
+        <label class="switch"><input type="checkbox" id="opt-navboxes"> <span>Navigation boxes</span></label>
         <label class="switch select"><span>Theme</span>
           <select id="opt-theme">
             <option value="light">Light</option>
@@ -108,6 +112,11 @@
           </select>
         </label>
       </div>
+      <p class="muted small settings-note">
+        Navigation boxes are the link farms at the foot of an article. Switching
+        them off is the harder game — a big page can lose half its ways out — so
+        the setting you played under is recorded with each race.
+      </p>
       <p class="muted small">
         Article text and images come live from Wikipedia and are available under
         <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>.
@@ -123,6 +132,7 @@
       <h1 class="challenge-who" id="challenge-who"></h1>
       <div class="matchup" id="challenge-matchup"></div>
       <div class="result-stats" id="challenge-stats"></div>
+      <p class="muted small result-note" id="challenge-note" hidden></p>
 
       <details class="spoiler" id="challenge-path" hidden>
         <summary>Show the route they took <span class="spoiler-warn">spoiler</span></summary>
@@ -148,17 +158,36 @@
         </div>
         <div class="hud-clock">
           <span class="hud-time" id="hud-time">0:00.0</span>
-          <span class="hud-clicks"><span id="hud-clicks">0</span> clicks</span>
+          <span class="hud-clicks" id="hud-progress"
+                title="Length of your current route · articles you have opened in all">0 clicks · 1 seen</span>
         </div>
       </div>
       <div class="hud-row hud-trail">
-        <button class="btn btn-mini" id="btn-back" title="Go back one article">← Back</button>
+        <button class="btn btn-mini" id="btn-back" title="Go back one article (+5s)" aria-label="Go back one article, costs five seconds">←<span class="btn-word"> Back</span> +5s</button>
         <nav class="trail" id="trail" aria-label="Your path"></nav>
         <div class="hud-actions">
+          <button class="btn btn-mini" id="btn-contents" aria-expanded="false" aria-controls="contents-menu" title="Jump to a section">Contents</button>
+          <button class="btn btn-mini" id="btn-find" aria-expanded="false" aria-controls="find-bar" title="Filter the links on this page (F)">Find</button>
           <button class="btn btn-mini" id="btn-peek" title="Peek at the target (+15s)">Peek +15s</button>
+          <button class="btn btn-mini" id="btn-skip" title="Not this one — roll another race" hidden>Skip</button>
           <button class="btn btn-mini btn-danger" id="btn-giveup">Give up</button>
         </div>
       </div>
+
+      <div class="hud-row hud-find" id="find-bar" hidden>
+        <input id="find-input" type="text" autocomplete="off" spellcheck="false"
+               aria-label="Filter the links on this page" placeholder="Filter links on this page…">
+        <span class="find-count" id="find-count" role="status"></span>
+        <button class="btn btn-mini" id="btn-find-prev" title="Previous match" aria-label="Previous match">↑</button>
+        <button class="btn btn-mini" id="btn-find-next" title="Next match" aria-label="Next match">↓</button>
+        <button class="btn btn-mini" id="btn-find-close" title="Close the filter" aria-label="Close the filter">✕</button>
+      </div>
+
+      <div class="contents-menu" id="contents-menu" hidden>
+        <p class="contents-head" id="contents-head"></p>
+        <nav class="contents-list" id="contents-list" aria-label="Sections of this article"></nav>
+      </div>
+
       <div class="challenge-banner" id="challenge-banner" hidden></div>
     </div>
 
@@ -176,8 +205,11 @@
     <h2 id="result-title"></h2>
     <p class="result-matchup" id="result-matchup"></p>
     <div class="result-stats" id="result-stats"></div>
+    <p class="muted small result-note" id="result-note" hidden></p>
+    <p class="crowd-line" id="result-crowd" hidden></p>
     <div class="result-challenge" id="result-challenge" hidden></div>
     <div class="result-path" id="result-path"></div>
+    <div class="result-best" id="result-best"></div>
     <label class="name-field" for="input-name">
       <span>Sign your challenge (optional)</span>
       <input id="input-name" type="text" maxlength="24" autocomplete="nickname" placeholder="Your name">
@@ -189,6 +221,7 @@
     <p class="muted small" id="share-note"></p>
     <div class="result-actions">
       <button class="btn btn-ghost" id="btn-again">Play again</button>
+      <button class="btn btn-ghost" id="btn-reverse" title="Same two articles, the other way round">Race it backwards</button>
       <button class="btn btn-ghost" id="btn-new">New race</button>
       <button class="btn btn-ghost" id="btn-home">Home</button>
     </div>
