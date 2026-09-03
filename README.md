@@ -15,7 +15,7 @@ back-button escape to Google.
 | **Quick race** | Random pull from a curated pool of 63 races, filterable by difficulty. |
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index. |
-| **Challenge link** | Finish a race, copy the link, and a friend races the same board against your time and click count. |
+| **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat. |
 
 ## Rules as implemented
 
@@ -27,6 +27,20 @@ back-button escape to Google.
 - **Peek** shows the target's summary and adds 15 seconds to your final time.
 - Navigation boxes are kept but collapsed, the way they behave on desktop
   Wikipedia. They can be switched off entirely in settings.
+
+## Look
+
+Styled to sit next to Wikipedia rather than argue with it: white content on a
+`#f8f9fa` page, `#a2a9b1` hairlines, serif headings over sans body text, and
+`#3366cc` links that underline only on hover. Red is reserved for one thing —
+the target. Light is the default; a dark theme using Wikipedia's own night
+palette is in settings, along with "Match system".
+
+Wikipedia's inline box widths are stripped from infoboxes and thumbs so the
+game's own column rules govern the layout at every width. Its inline
+*background* colours are kept but tagged `.wg-tinted`, which the dark theme
+uses to force dark text back onto them — taxobox headers would be unreadable
+otherwise.
 
 ## Running it
 
@@ -57,8 +71,15 @@ Pages, S3). There is nothing to configure.
 | `js/stats.js` | Player history in `localStorage`. Nothing leaves the browser. |
 
 Routes live in the hash, so the whole thing is one static page:
-`#/race/Apple/Pearl_Harbor?daily=1`, or with a score attached,
-`#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&by=Chris`.
+`#/race/Apple/Pearl_Harbor?daily=1`, or with a finished run attached,
+`#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&by=Chris&p=<route>`.
+
+A link carrying a run opens on the challenge card rather than starting the
+race, so the reader sees what they are chasing before the clock starts. The
+route (`p`) is base64 — chat clients that print URLs in full would otherwise
+spoil the answer in the link text itself. It is dropped automatically if the
+URL would exceed 1800 characters, and a mangled `p` degrades to no route rather
+than breaking the link.
 
 ### The daily schedule
 

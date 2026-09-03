@@ -56,6 +56,15 @@ export function prepareArticle(html, opts = {}) {
   // Give already-collapsible tables a native disclosure so they are usable.
   root.querySelectorAll('table.mw-collapsible').forEach((t) => t.classList.remove('mw-collapsed'));
 
+  // Wikipedia sizes infoboxes and thumbs with inline widths for its own
+  // column. We control this one, so let the stylesheet decide.
+  root.querySelectorAll('.infobox, table.infobox, .thumb, .thumbinner, figure').forEach((box) => {
+    box.style.removeProperty('width');
+    box.style.removeProperty('min-width');
+    box.style.removeProperty('max-width');
+    box.removeAttribute('width');
+  });
+
   // Wikipedia ships inline background colours (taxoboxes, coloured cells)
   // that assume dark text. Flag them so the dark theme can keep them legible.
   root.querySelectorAll('[style]').forEach((n) => {

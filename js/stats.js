@@ -3,6 +3,8 @@
 const KEY = 'wikigame:v1';
 
 const BLANK = {
+  // settingsVersion is deliberately absent — its absence in a stored blob is
+  // what tells migrate() the blob predates the current defaults.
   played: 0,
   won: 0,
   totalClicks: 0,
@@ -15,7 +17,7 @@ const BLANK = {
   playerName: '',
   dailyResults: {}, // dailyNumber -> { ms, clicks, won }
   history: [], // most recent first, capped
-  settings: { images: true, navboxes: true, theme: 'auto' }
+  settings: { images: true, navboxes: true, theme: 'light' }
 };
 
 let cache = null;
@@ -28,10 +30,22 @@ export function load() {
     cache.settings = { ...BLANK.settings, ...(cache.settings || {}) };
     cache.dailyResults = cache.dailyResults || {};
     cache.history = cache.history || [];
+    migrate();
   } catch {
     cache = { ...BLANK };
   }
   return cache;
+}
+
+/**
+ * v2 — the Wikipedia-white look became the default, so anyone still sitting on
+ * the old "auto" default moves onto it once. An explicit later choice sticks.
+ */
+function migrate() {
+  if (cache.settingsVersion >= 2) return;
+  cache.settingsVersion = 2;
+  cache.settings.theme = 'light';
+  save();
 }
 
 function save() {

@@ -12,6 +12,7 @@ const state = {
   race: null,
   difficulty: 'any',
   lastConfig: null,
+  pendingChallenge: null,
   timer: null
 };
 
@@ -20,6 +21,7 @@ const state = {
 function boot() {
   applyTheme(store.getSettings().theme);
   wireHome();
+  wireChallenge();
   wireRace();
   wireModals();
   renderHome();
@@ -32,13 +34,17 @@ function boot() {
 function route() {
   const r = parseHash();
   if (r.route === 'race') {
-    startRace({
+    const config = {
       start: r.start,
       target: r.target,
       mode: r.mode,
       dailyNumber: r.dailyNumber,
       challenge: r.challenge
-    });
+    };
+    // A link carrying someone's score opens on that result, so the reader
+    // sees what they are chasing before the clock starts.
+    if (r.challenge) showChallenge(config);
+    else startRace(config);
   } else {
     endRace();
     showScreen('home');
@@ -58,9 +64,57 @@ function navigate(hash) {
 
 function showScreen(name) {
   $('#screen-home').hidden = name !== 'home';
+  $('#screen-challenge').hidden = name !== 'challenge';
   $('#screen-race').hidden = name !== 'race';
   document.body.classList.toggle('in-race', name === 'race');
   window.scrollTo(0, 0);
+}
+
+/* ------------------------------------------------------- challenge card */
+
+/** The landing screen a shared result link opens on. */
+function showChallenge(config) {
+  endRace();
+  const c = config.challenge;
+  const who = c.by || 'Someone';
+
+  $('#challenge-kicker').textContent = config.dailyNumber
+    ? `Daily #${config.dailyNumber}`
+    : 'You have been challenged';
+  $('#challenge-who').textContent = `${who} made it.`;
+  $('#challenge-matchup').replaceChildren(matchupEl(config.start, config.target));
+
+  const stats = [
+    c.clicks != null ? ['Clicks', String(c.clicks)] : null,
+    c.ms ? ['Time', fmtTime(c.ms)] : null,
+    c.hints ? ['Peeks', String(c.hints)] : null
+  ].filter(Boolean);
+  $('#challenge-stats').replaceChildren(
+    ...stats.map(([l, v]) =>
+      el('div', { class: 'stat' }, el('span', { class: 'stat-value', text: v }), el('span', { class: 'stat-label', text: l }))
+    )
+  );
+
+  const spoiler = $('#challenge-path');
+  if (c.path && c.path.length > 1) {
+    spoiler.open = false;
+    $('#challenge-path-chain').textContent = pathText(c.path);
+    spoiler.hidden = false;
+  } else {
+    spoiler.hidden = true;
+  }
+
+  state.pendingChallenge = config;
+  showScreen('challenge');
+  $('#btn-accept').focus();
+}
+
+function wireChallenge() {
+  $('#btn-accept').addEventListener('click', () => {
+    const config = state.pendingChallenge;
+    if (config) startRace(config);
+  });
+  $('#btn-challenge-home').addEventListener('click', goHome);
 }
 
 /* ------------------------------------------------------------------ home */
@@ -599,6 +653,9 @@ function finishRace(result) {
 
   // A run you gave up on is not a score to beat — share the board instead.
   $('#btn-copy-challenge').textContent = result.won ? 'Copy challenge link' : 'Copy race link';
+  $('#share-note').textContent = result.won
+    ? 'The link opens on your result. Your route rides along, hidden behind a spoiler.'
+    : 'The link opens the same race with no score attached.';
   $('#modal-result').hidden = false;
   $('#btn-copy-challenge').focus();
   renderHome();
@@ -615,23 +672,22 @@ function wireModals() {
   });
 
   $('#btn-copy-challenge').addEventListener('click', async (e) => {
+    // currentTarget is cleared once dispatch ends, so grab the button first.
+    const btn = e.currentTarget;
     const r = state.race?.result();
     if (!r) return;
     const label = r.won ? 'Copy challenge link' : 'Copy race link';
     const url = r.won ? challengeUrl({ ...r, by: playerName() }) : raceUrl({ ...r, mode: 'custom' });
-    const ok = await copyText(url);
-    e.currentTarget.textContent = ok ? 'Link copied ✓' : 'Copy failed';
-    setTimeout(() => (e.currentTarget.textContent = label), 1800);
+    flash(btn, (await copyText(url)) ? 'Link copied ✓' : 'Copy failed', label);
   });
 
   $('#btn-copy-result').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
     const r = state.race?.result();
     if (!r) return;
     const url = r.won ? challengeUrl({ ...r, by: playerName() }) : raceUrl({ ...r, mode: 'custom' });
     const text = resultText({ ...r, url });
-    const ok = await copyText(text);
-    e.currentTarget.textContent = ok ? 'Copied ✓' : 'Copy failed';
-    setTimeout(() => (e.currentTarget.textContent = 'Copy result'), 1800);
+    flash(btn, (await copyText(text)) ? 'Copied ✓' : 'Copy failed', 'Copy result');
   });
 
   $('#btn-again').addEventListener('click', () => {
@@ -647,15 +703,23 @@ function wireModals() {
   $('#btn-home').addEventListener('click', goHome);
 }
 
+/** Momentary button feedback that restores the original label. */
+function flash(btn, message, label) {
+  btn.textContent = message;
+  clearTimeout(btn._flash);
+  btn._flash = setTimeout(() => (btn.textContent = label), 1800);
+}
+
 function playerName() {
   return $('#input-name').value.trim() || null;
 }
 
 /* ----------------------------------------------------------------- chrome */
 
+const THEMES = new Set(['light', 'dark', 'auto']);
+
 function applyTheme(theme) {
-  if (theme === 'auto') document.documentElement.removeAttribute('data-theme');
-  else document.documentElement.setAttribute('data-theme', theme);
+  document.documentElement.setAttribute('data-theme', THEMES.has(theme) ? theme : 'light');
 }
 
 /** In-app replacement for window.confirm — resolves true when accepted. */

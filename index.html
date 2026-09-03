@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>The Wikipedia Game</title>
 <meta name="description" content="Race from one Wikipedia article to another using only the links on the page. Daily challenge, custom races, and shareable challenge links.">
-<meta name="color-scheme" content="light dark">
+<meta name="color-scheme" content="light">
 <meta property="og:title" content="The Wikipedia Game">
 <meta property="og:description" content="Start on one article. Reach another. Links only.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='88'%3E%F0%9F%8F%81%3C/text%3E%3C/svg%3E">
@@ -90,7 +90,7 @@
     <section class="card" id="stats-card">
       <div class="card-head">
         <h2>Your record</h2>
-        <button class="btn btn-ghost small" id="btn-reset-stats">Reset</button>
+        <button class="btn btn-ghost btn-danger small" id="btn-reset-stats">Reset</button>
       </div>
       <div class="stat-grid" id="stat-grid"></div>
       <div id="history"></div>
@@ -102,9 +102,9 @@
         <label class="switch"><input type="checkbox" id="opt-navboxes"> <span>Show navigation boxes</span></label>
         <label class="switch select"><span>Theme</span>
           <select id="opt-theme">
-            <option value="auto">Auto</option>
             <option value="light">Light</option>
             <option value="dark">Dark</option>
+            <option value="auto">Match system</option>
           </select>
         </label>
       </div>
@@ -114,6 +114,27 @@
         This game is not affiliated with the Wikimedia Foundation.
       </p>
     </footer>
+  </section>
+
+  <!-- ============== CHALLENGE LANDING ============== -->
+  <section class="screen" id="screen-challenge" hidden>
+    <div class="challenge-card">
+      <p class="challenge-kicker" id="challenge-kicker">You have been challenged</p>
+      <h1 class="challenge-who" id="challenge-who"></h1>
+      <div class="matchup" id="challenge-matchup"></div>
+      <div class="result-stats" id="challenge-stats"></div>
+
+      <details class="spoiler" id="challenge-path" hidden>
+        <summary>Show the route they took <span class="spoiler-warn">spoiler</span></summary>
+        <p class="path-chain" id="challenge-path-chain"></p>
+      </details>
+
+      <div class="challenge-actions">
+        <button class="btn btn-primary btn-big" id="btn-accept">Race it</button>
+        <button class="btn btn-ghost" id="btn-challenge-home">Not now</button>
+      </div>
+      <p class="muted small">Same start, same target, same rules. Clock starts when the first article loads.</p>
+    </div>
   </section>
 
   <!-- ================= RACE ================= -->
@@ -165,6 +186,7 @@
       <button class="btn btn-primary" id="btn-copy-challenge">Copy challenge link</button>
       <button class="btn" id="btn-copy-result">Copy result</button>
     </div>
+    <p class="muted small" id="share-note"></p>
     <div class="result-actions">
       <button class="btn btn-ghost" id="btn-again">Play again</button>
       <button class="btn btn-ghost" id="btn-new">New race</button>

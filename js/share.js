@@ -6,7 +6,8 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  * Routes:
  *   #/                          home
  *   #/race/Start/Target         open race
- *   #/race/Start/Target?ms=..&clicks=..&by=Name&daily=7   challenge to beat
+ *   #/race/Start/Target?ms=..&clicks=..&h=..&by=Name&p=A|B|C&daily=7
+ *                               a finished run — opens on the result, then races
  */
 export function parseHash(hash = location.hash) {
   const raw = hash.replace(/^#\/?/, '');
@@ -20,8 +21,10 @@ export function parseHash(hash = location.hash) {
       q.has('ms') || q.has('clicks')
         ? {
             ms: Number(q.get('ms')) || null,
-            clicks: Number(q.get('clicks')) || null,
-            by: q.get('by') ? decodeURIComponent(q.get('by')) : null
+            clicks: q.has('clicks') ? Number(q.get('clicks')) : null,
+            hints: Number(q.get('h')) || 0,
+            by: q.get('by') || null,
+            path: q.get('p') ? decodePath(q.get('p')) : null
           }
         : null;
     return {
@@ -44,6 +47,30 @@ export function raceHash({ start, target, mode, dailyNumber }) {
   return `#/race/${toUrlTitle(start)}/${toUrlTitle(target)}${qs ? '?' + qs : ''}`;
 }
 
+/**
+ * The route is packed into the link so the opener can reveal it, but a raw
+ * URL is often shown in full in chat — base64 keeps the spoiler spoiled.
+ */
+function encodePath(titles) {
+  const bytes = new TextEncoder().encode(titles.join('|'));
+  let binary = '';
+  bytes.forEach((b) => (binary += String.fromCharCode(b)));
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodePath(param) {
+  try {
+    const b64 = param.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + (b64.length % 4 ? '='.repeat(4 - (b64.length % 4)) : '');
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (ch) => ch.charCodeAt(0));
+    const titles = new TextDecoder().decode(bytes).split('|').filter(Boolean);
+    return titles.length ? titles : null;
+  } catch {
+    return null; // a mangled link should still open the race
+  }
+}
+
 export function baseUrl() {
   return location.origin + location.pathname;
 }
@@ -52,14 +79,28 @@ export function raceUrl(race) {
   return baseUrl() + raceHash(race);
 }
 
-/** A link that carries a score for a friend to beat. */
-export function challengeUrl({ start, target, ms, clicks, by, dailyNumber }) {
-  const q = new URLSearchParams();
-  q.set('ms', String(Math.round(ms)));
-  q.set('clicks', String(clicks));
-  if (by) q.set('by', by);
-  if (dailyNumber) q.set('daily', String(dailyNumber));
-  return `${baseUrl()}#/race/${toUrlTitle(start)}/${toUrlTitle(target)}?${q.toString()}`;
+// Long enough for a healthy path, short enough to survive being pasted into
+// a text message or a chat client that linkifies by length.
+const MAX_URL = 1800;
+
+/**
+ * A link that carries a finished run: the score, and the route taken so the
+ * opener can reveal it once they are done arguing with it.
+ */
+export function challengeUrl({ start, target, ms, clicks, hints, by, dailyNumber, path }) {
+  const build = (withPath) => {
+    const q = new URLSearchParams();
+    q.set('ms', String(Math.round(ms)));
+    q.set('clicks', String(clicks));
+    if (hints) q.set('h', String(hints));
+    if (by) q.set('by', by);
+    if (dailyNumber) q.set('daily', String(dailyNumber));
+    if (withPath && path && path.length > 1) q.set('p', encodePath(path));
+    return `${baseUrl()}#/race/${toUrlTitle(start)}/${toUrlTitle(target)}?${q.toString()}`;
+  };
+
+  const full = build(true);
+  return full.length <= MAX_URL ? full : build(false);
 }
 
 export function resultText({ start, target, ms, clicks, won, dailyNumber, hints, url }) {
