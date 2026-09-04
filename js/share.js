@@ -6,8 +6,11 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  * Routes:
  *   #/                          home
  *   #/race/Start/Target         open race
- *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&by=Name&p=A|B|C&daily=7
+ *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&by=Name&p=A|B|C&t=..&daily=7
  *                               a finished run — opens on the result, then races
+ *
+ * `t` is the pace of that run: one figure per click, which is what lets the
+ * opener race the ghost rather than only the final score.
  */
 export function parseHash(hash = location.hash) {
   const raw = hash.replace(/^#\/?/, '');
@@ -26,9 +29,19 @@ export function parseHash(hash = location.hash) {
             // Absent means the default (on); only the harder board is recorded.
             navboxes: q.has('nb') ? q.get('nb') !== '0' : null,
             by: q.get('by') || null,
-            path: q.get('p') ? decodePath(q.get('p')) : null
+            path: q.get('p') ? decodePath(q.get('p')) : null,
+            times: q.has('t') ? decodeTimes(q.get('t')) : null
           }
         : null;
+
+    // The pace only means anything alongside the route it was run at. A `t`
+    // that does not line up with `p` came from a mangled link, so it is
+    // dropped rather than pinning the ghost to the wrong hops.
+    if (challenge?.times) {
+      const clicks = challenge.path ? challenge.path.length - 1 : challenge.clicks;
+      if (challenge.times.length !== clicks) challenge.times = null;
+    }
+
     return {
       route: 'race',
       start: fromUrlTitle(segs[1]),
@@ -73,6 +86,22 @@ function decodePath(param) {
   }
 }
 
+/**
+ * The pace of a run: one figure per click, in tenths of a second, base 36.
+ * A ten-hop route costs about thirty characters — the route itself is the
+ * expensive half of the link, and this rides in behind it.
+ */
+function encodeTimes(hopTimes) {
+  return hopTimes.map((ms) => Math.max(0, Math.round(ms / 100)).toString(36)).join('.');
+}
+
+function decodeTimes(param) {
+  const parts = String(param).split('.');
+  const out = parts.map((p) => parseInt(p, 36));
+  if (!out.length || out.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  return out.map((n) => n * 100);
+}
+
 export function baseUrl() {
   return location.origin + location.pathname;
 }
@@ -89,8 +118,19 @@ const MAX_URL = 1800;
  * A link that carries a finished run: the score, and the route taken so the
  * opener can reveal it once they are done arguing with it.
  */
-export function challengeUrl({ start, target, ms, clicks, hints, navboxes, by, dailyNumber, path }) {
-  const build = (withPath) => {
+export function challengeUrl({
+  start,
+  target,
+  ms,
+  clicks,
+  hints,
+  navboxes,
+  by,
+  dailyNumber,
+  path,
+  hopTimes
+}) {
+  const build = (withPath, withTimes) => {
     const q = new URLSearchParams();
     q.set('ms', String(Math.round(ms)));
     q.set('clicks', String(clicks));
@@ -98,12 +138,23 @@ export function challengeUrl({ start, target, ms, clicks, hints, navboxes, by, d
     if (navboxes === false) q.set('nb', '0');
     if (by) q.set('by', by);
     if (dailyNumber) q.set('daily', String(dailyNumber));
-    if (withPath && path && path.length > 1) q.set('p', encodePath(path));
+    if (withPath && path && path.length > 1) {
+      q.set('p', encodePath(path));
+      // Pace without the route it was run at would be a ghost pinned to
+      // nothing, so `t` never outlives `p`.
+      if (withTimes && hopTimes && hopTimes.length >= path.length - 1) {
+        q.set('t', encodeTimes(hopTimes.slice(0, path.length - 1)));
+      }
+    }
     return `${baseUrl()}#/race/${toUrlTitle(start)}/${toUrlTitle(target)}?${q.toString()}`;
   };
 
-  const full = build(true);
-  return full.length <= MAX_URL ? full : build(false);
+  // Shed the pace first, then the route: a long run should still arrive as a
+  // score to beat rather than as a link a chat client has chopped in half.
+  for (const url of [build(true, true), build(true, false), build(false, false)]) {
+    if (url.length <= MAX_URL) return url;
+  }
+  return build(false, false);
 }
 
 // One link per click. Past the cap a chain stops reading as a shape and starts

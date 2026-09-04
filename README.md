@@ -15,7 +15,7 @@ back-button escape to Google.
 | **Quick race** | Random pull from a curated pool of 209 races, filterable by difficulty. It remembers what it has dealt you, so races do not come round again until you have worked through the pool. |
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index — and a difficulty estimate before you commit. |
-| **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat. |
+| **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat, and with your pace running alongside them as a ghost. |
 
 **Copy result** gives you a compact block for a group chat:
 
@@ -54,6 +54,10 @@ carries the board for anyone who wants to play it.
 - The HUD shows **clicks · seen** — the route you are on, and how many articles
   you have opened in all. They are the same number until you double back.
 - **Peek** shows the target's summary and adds 15 seconds to your final time.
+- Racing a challenge puts a **ghost** in the HUD: where the challenger was when
+  their clock read what yours reads now. It can be switched off in settings.
+- Every result screen breaks the run into **splits** — what each hop cost, and
+  which one cost the most.
 - **Contents** jumps to any section; **Find** filters the page down to the links
   matching what you type, and steps through them. Both are free and unlimited.
   Browser find already worked on this board, so the choice was between a hidden
@@ -147,7 +151,7 @@ Pages, S3). There is nothing to configure.
 
 Routes live in the hash, so the whole thing is one static page:
 `#/race/Apple/Pearl_Harbor?daily=1`, or with a finished run attached,
-`#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&p=<route>`.
+`#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&p=<route>&t=<pace>`.
 
 `mode` carries how the race was chosen — `daily`, `random` (curated pool),
 `wild` (two random articles), `challenge`, or `custom` when absent. Skip reads
@@ -158,9 +162,70 @@ from that link is played that way whatever the reader's own settings say.
 A link carrying a run opens on the challenge card rather than starting the
 race, so the reader sees what they are chasing before the clock starts. The
 route (`p`) is base64 — chat clients that print URLs in full would otherwise
-spoil the answer in the link text itself. It is dropped automatically if the
-URL would exceed 1800 characters, and a mangled `p` degrades to no route rather
-than breaking the link.
+spoil the answer in the link text itself. `t` is the pace of the run: one
+figure per click, in tenths of a second, base 36. Past 1800 characters the pace
+is shed first and then the route, so a long run still arrives as a score to
+beat rather than as a link a chat client has chopped in half. A mangled `p`
+degrades to no route rather than breaking the link, and a `t` whose length does
+not line up with the route it arrived with is dropped rather than pinned to the
+wrong hops.
+
+### Splits
+
+Clicks and a final time say what a run cost but not where it went. Every result
+screen breaks the route into the time spent on each article, bar by bar, with
+the longest stop named underneath:
+
+```
+1  Apple    0:28.9  ████████████████
+2  Malus    0:24.9  ██████████████
+3  Apple    0:07.8  ████
+🏁 Fruit    arrived
+
+Longest stop: Apple — 0:28.9, 47% of the run.
+```
+
+A split runs from arriving somewhere to arriving at the next article you
+*kept*, so an excursion that was rewound is charged to the article it was
+launched from — which is where the decision was actually made. The row is
+marked `↩` so the number reads as a detour rather than as deliberation. That
+makes the splits tile the whole run: they add up to the final time, peek and
+back penalties included.
+
+Arriving at the target ends the race, so the last article is an arrival rather
+than a stay — unless the run ended there by giving up, which it very much was,
+and that split is usually the longest one on the board.
+
+### The ghost
+
+A challenge link carries the pace of the run that made it, so the challenger
+can be *raced* rather than merely out-scored. The HUD says where they were when
+their clock read what yours reads now:
+
+```
+👻 Chris was 2 clicks in by now.                     −1 on their pace
+🏁 Chris had finished by now — 3 clicks in 0:40.         7.9s behind
+```
+
+It names none of their articles. The only thing it adds to what the challenge
+card already showed is *when* they got their clicks in, so racing the ghost
+gives away nothing that accepting the challenge did not — the route stays
+behind its spoiler. Their hops land silently otherwise, so the line takes a
+brief wash of colour as each one goes by, which `prefers-reduced-motion` turns
+off.
+
+The sentence sits in a live region and is only rewritten when it changes; the
+delta beside it moves ten times a second and is deliberately left outside that
+region. **Ghost pacer** in settings switches the whole line off. It changes
+nothing about the board — unlike navigation boxes, it is not a difficulty
+setting — so it is not recorded with a result.
+
+On the result screen the same pace becomes a second, fainter bar under each of
+your splits, with the gap per hop beside it, and one line saying who led and
+until when. That comparison is drawn from the link rather than from the live
+ghost, so it still appears with the pacer switched off. Links written before
+`t` existed carry no pace: no ghost, no second bar, and the rest of the
+challenge behaves exactly as it did.
 
 ### The shortest route
 

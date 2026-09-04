@@ -17,6 +17,7 @@ const state = {
   lastConfig: null,
   pendingChallenge: null,
   raceHash: null,
+  ghost: null,
   historyExpanded: false,
   timer: null,
   routeSearch: null,
@@ -246,12 +247,15 @@ function wireHome() {
   const s = store.getSettings();
   const imgs = $('#opt-images');
   const navs = $('#opt-navboxes');
+  const gho = $('#opt-ghost');
   const theme = $('#opt-theme');
   imgs.checked = s.images;
   navs.checked = s.navboxes;
+  gho.checked = s.ghost !== false;
   theme.value = s.theme;
   imgs.addEventListener('change', () => store.setSetting('images', imgs.checked));
   navs.addEventListener('change', () => store.setSetting('navboxes', navs.checked));
+  gho.addEventListener('change', () => store.setSetting('ghost', gho.checked));
   theme.addEventListener('change', () => {
     store.setSetting('theme', theme.value);
     applyTheme(theme.value);
@@ -787,6 +791,7 @@ function startRace(config) {
   $('#hud-target-title').textContent = config.target;
   $('#trail').replaceChildren();
   renderChallengeBanner(config.challenge, config);
+  setupGhost(config.challenge);
 
   const race = new Race({
     ...config,
@@ -804,7 +809,9 @@ function startRace(config) {
   state.race = race;
 
   state.timer = setInterval(() => {
-    if (race.status === 'racing') $('#hud-time').textContent = fmtTime(race.elapsedMs);
+    if (race.status !== 'racing') return;
+    $('#hud-time').textContent = fmtTime(race.elapsedMs);
+    tickGhost(race);
   }, 100);
 
   race.begin();
@@ -841,6 +848,8 @@ function endRace() {
   state.timer = null;
   state.routeSearch?.abort();
   state.routeSearch = null;
+  state.ghost = null;
+  $('#ghost-line').hidden = true;
   finder.reset();
   if (state.race) state.race.status = 'abandoned';
   state.race = null;
@@ -877,6 +886,90 @@ function renderChallengeBanner(challenge, config) {
     ].filter(Boolean)
   );
   banner.hidden = false;
+}
+
+/* ------------------------------------------------------------- the ghost */
+
+/**
+ * A challenge link carries the pace of the run that made it — one figure per
+ * click — so the challenger can be raced rather than merely out-scored. The
+ * HUD says where they were when their clock read what yours reads now.
+ *
+ * It names none of their articles. The only thing it adds to what the
+ * challenge card already showed is *when* they got their clicks in, so racing
+ * the ghost gives away nothing that accepting the challenge did not.
+ */
+function makeGhost(challenge) {
+  if (!challenge?.times?.length) return null;
+  if (store.getSettings().ghost === false) return null;
+
+  let sum = 0;
+  const arrivals = challenge.times.map((ms) => (sum += ms));
+  return {
+    by: challenge.by || 'Your challenger',
+    arrivals, // when they had made 1, 2, 3 … clicks
+    clicks: challenge.clicks ?? arrivals.length,
+    finishMs: challenge.ms || arrivals[arrivals.length - 1],
+    // Starts level rather than at -1: the first tick is not a hop going by.
+    hop: 0,
+    text: ''
+  };
+}
+
+function setupGhost(challenge) {
+  const line = $('#ghost-line');
+  state.ghost = makeGhost(challenge);
+  line.classList.remove('is-hop');
+  line.hidden = !state.ghost;
+  if (!state.ghost) return;
+  $('#ghost-icon').textContent = '👻';
+  $('#ghost-text').textContent = `${state.ghost.by} is running this one with you.`;
+  $('#ghost-delta').hidden = true;
+}
+
+function tickGhost(race) {
+  const g = state.ghost;
+  if (!g) return;
+
+  const now = race.elapsedMs;
+  let hop = 0;
+  while (hop < g.arrivals.length && g.arrivals[hop] <= now) hop++;
+  const done = now >= g.finishMs;
+
+  // A hop of theirs going by is the one thing on this line worth looking up
+  // for, so it gets a moment of movement rather than a silent number change.
+  if (hop !== g.hop) {
+    g.hop = hop;
+    const line = $('#ghost-line');
+    line.classList.remove('is-hop');
+    void line.offsetWidth; // restart the animation rather than skip it
+    line.classList.add('is-hop');
+  }
+
+  const text = done
+    ? `${g.by} had finished by now — ${g.clicks} click${g.clicks === 1 ? '' : 's'} in ${fmtTimeShort(g.finishMs)}.`
+    : `${g.by} was ${hop} click${hop === 1 ? '' : 's'} in by now.`;
+  // Ten writes a second into a live region would be ten announcements, so the
+  // sentence is only replaced when it has actually changed. The delta beside
+  // it moves constantly and is deliberately left out of that region.
+  if (text !== g.text) {
+    g.text = text;
+    $('#ghost-icon').textContent = done ? '🏁' : '👻';
+    $('#ghost-text').textContent = text;
+  }
+
+  const delta = $('#ghost-delta');
+  if (done) {
+    // Their time is gone; what is left is the click count and how far past
+    // their finish you are, which is the number that still moves.
+    delta.className = 'ghost-delta is-behind';
+    delta.textContent = `${fmtDelta(now - g.finishMs)} behind`;
+  } else {
+    const d = race.clicks - hop;
+    delta.className = `ghost-delta ${d > 0 ? 'is-ahead' : d < 0 ? 'is-behind' : 'is-level'}`;
+    delta.textContent = d === 0 ? 'level' : `${d > 0 ? '+' : '\u2212'}${Math.abs(d)} on their pace`;
+  }
+  delta.hidden = false;
 }
 
 function renderHud(race) {
@@ -1044,16 +1137,15 @@ function finishRace(result) {
       const d = result.ms - result.challenge.ms;
       lines.push(`${d < 0 ? '✅' : '❌'} ${fmtDelta(d)} ${d < 0 ? 'faster' : 'slower'} than ${who}`);
     }
+    const lead = leadLine(result);
+    if (lead) lines.push(lead);
     cmp.replaceChildren(...lines.map((t) => el('p', { text: t })));
     cmp.hidden = false;
   } else {
     cmp.hidden = true;
   }
 
-  $('#result-path').replaceChildren(
-    el('h3', { class: 'sub', text: `Your path (${result.path.length} article${result.path.length === 1 ? '' : 's'})` }),
-    pathChainEl(result.path)
-  );
+  renderSplits(result);
 
   // Your own run has already gone into the seen pile via store.record().
   renderCrowd('#result-crowd', result.dailyNumber, result.won ? result.clicks : null, {
@@ -1072,6 +1164,158 @@ function finishRace(result) {
   $('#modal-result').hidden = false;
   $('#btn-copy-challenge').focus();
   renderHome();
+}
+
+/* ---------------------------------------------------------------- splits */
+
+// A hop that took no measurable time still needs to be visible as a bar.
+const SPLIT_MIN_PCT = 2;
+
+/**
+ * The route with what each hop cost.
+ *
+ * A split runs from arriving at an article to arriving at the next one you
+ * kept, so a detour that was rewound is charged to the article it was launched
+ * from — the place the decision was actually made. That makes the splits tile
+ * the run: they add up to the final time, peek and back penalties included,
+ * and the longest bar is the answer to "where did that go?".
+ *
+ * Arriving at the target ends the race, so the last article is not a stay —
+ * unless the run ended there by giving up, which it very much was.
+ */
+function renderSplits(result) {
+  const box = $('#result-path');
+  const n = result.path.length;
+  const head = el('h3', {
+    class: 'sub',
+    text: `Your route (${n} article${n === 1 ? '' : 's'})`
+  });
+
+  const times = result.hopTimes;
+  if (!times || times.length !== n) {
+    box.replaceChildren(head, pathChainEl(result.path)); // a run from before splits
+    return;
+  }
+
+  const stays = result.won ? n - 1 : n;
+  const theirs = result.challenge?.times || null;
+  const who = result.challenge?.by || 'the challenger';
+  const scale = Math.max(1, ...times.slice(0, stays), ...(theirs || []));
+  const pct = (ms) => Math.max(SPLIT_MIN_PCT, Math.round((100 * ms) / scale));
+
+  // Marking the longest stop is only worth anything against another stop.
+  let slowest = -1;
+  if (stays > 1) {
+    for (let i = 0; i < stays; i++) if (slowest < 0 || times[i] > times[slowest]) slowest = i;
+  }
+
+  const rows = result.path.map((title, i) => {
+    const arrival = result.won && i === n - 1;
+    const mine = times[i];
+    const yours = theirs?.[i];
+    const delta = !arrival && yours != null ? mine - yours : null;
+
+    return el(
+      'li',
+      {
+        class: `split${i === slowest && !arrival ? ' is-slowest' : ''}${arrival ? ' is-end' : ''}`
+      },
+      el('span', { class: 'split-n', text: arrival ? '🏁' : String(i + 1) }),
+      el(
+        'a',
+        {
+          class: 'path-hop split-title',
+          href: `https://en.wikipedia.org/wiki/${toUrlTitle(title)}`,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          title: `Read ${title} on Wikipedia`
+        },
+        title
+      ),
+      result.detours?.[i]
+        ? el('span', {
+            class: 'split-flag',
+            title: `${result.detours[i]} excursion${result.detours[i] === 1 ? '' : 's'} rewound back into this article — the time is in this split`,
+            text: `↩${result.detours[i]}`
+          })
+        : null,
+      arrival
+        ? el('span', { class: 'split-ms is-arrival', text: 'arrived' })
+        : el('span', { class: 'split-ms', text: fmtTime(mine) }),
+      delta == null || Math.abs(delta) < 100
+        ? null
+        : el('span', {
+            class: `split-delta ${delta < 0 ? 'is-good' : 'is-bad'}`,
+            text: `${delta < 0 ? '\u2212' : '+'}${fmtDelta(delta)}`
+          }),
+      // Last in the row, and last for a screen reader: the bar is the figure
+      // beside it drawn again, so it reads after the numbers rather than
+      // interrupting them.
+      arrival
+        ? null
+        : el(
+            'span',
+            { class: 'split-bar' },
+            el('span', { class: 'split-fill', style: `width:${pct(mine)}%` }),
+            yours != null
+              ? el('span', {
+                  class: 'split-ghost',
+                  style: `width:${pct(yours)}%`,
+                  title: `${who} spent ${fmtTime(yours)} on their ${ordinal(i + 1)} article`
+                })
+              : null
+          )
+    );
+  });
+
+  const notes = [];
+  if (stays > 1 && times[slowest] > 0) {
+    const share = Math.round((100 * times[slowest]) / Math.max(1, result.ms));
+    notes.push(
+      `Longest stop: ${result.path[slowest]} — ${fmtTime(times[slowest])}, ${share}% of the run.`
+    );
+  }
+  if (theirs) notes.push(`The faint bar is ${who} on the same hop of their own route.`);
+
+  box.replaceChildren(
+    head,
+    el('ol', { class: `splits${theirs ? ' has-ghost' : ''}` }, ...rows),
+    ...notes.map((t) => el('p', { class: 'muted small splits-note', text: t }))
+  );
+}
+
+function ordinal(n) {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
+}
+
+/**
+ * Who was in front, and until when. Both runs are measured from the same
+ * standing start, so comparing the clock at each click is a fair race even
+ * though the two routes are different roads.
+ */
+function leadLine(result) {
+  const theirs = result.challenge?.times;
+  if (!theirs?.length || !result.won || !result.hopTimes) return null;
+
+  const cumulative = (list) => {
+    let sum = 0;
+    return list.map((ms) => (sum += ms));
+  };
+  const mine = cumulative(result.hopTimes.slice(0, result.path.length - 1));
+  const yours = cumulative(theirs);
+  const n = Math.min(mine.length, yours.length);
+  if (!n) return null;
+
+  let ahead = 0;
+  while (ahead < n && mine[ahead] < yours[ahead]) ahead++;
+  const who = result.challenge.by || 'They';
+
+  if (ahead === 0) return `⏱ ${who} led from the first click.`;
+  if (ahead === n && mine.length <= yours.length) return '⏱ You led at every click.';
+  if (ahead === n) return `⏱ You led through all ${n} of their clicks.`;
+  return `⏱ You led through ${ahead} click${ahead === 1 ? '' : 's'}, then fell behind.`;
 }
 
 /**

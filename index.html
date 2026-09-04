@@ -33,7 +33,8 @@
         <li><strong>Back</strong> costs five seconds a step and does not undo a click. Explore as much as you like — it goes on the clock, not on your route.</li>
         <li><strong>Contents</strong> jumps to a section and <strong>Find</strong> filters the links on the page. Both are free and unlimited — knowing which link to look for is the game, hunting for it in nineteen sections is not.</li>
       </ol>
-      <p class="rules-note">Everyone who opens the same challenge link races the exact same board.</p>
+      <p class="rules-note">Everyone who opens the same challenge link races the exact same board — and if
+        their run carried its pace, you race the ghost of it too.</p>
     </details>
 
     <section class="card card-daily" id="daily-card">
@@ -104,6 +105,7 @@
       <div class="settings">
         <label class="switch"><input type="checkbox" id="opt-images"> <span>Show images</span></label>
         <label class="switch"><input type="checkbox" id="opt-navboxes"> <span>Navigation boxes</span></label>
+        <label class="switch"><input type="checkbox" id="opt-ghost"> <span>Ghost pacer</span></label>
         <label class="switch select"><span>Theme</span>
           <select id="opt-theme">
             <option value="light">Light</option>
@@ -115,7 +117,10 @@
       <p class="muted small settings-note">
         Navigation boxes are the link farms at the foot of an article. Switching
         them off is the harder game — a big page can lose half its ways out — so
-        the setting you played under is recorded with each race.
+        the setting you played under is recorded with each race. The ghost pacer
+        shows how far along your challenger was at this reading on the clock; it
+        names none of their articles, and switching it off changes nothing about
+        the board.
       </p>
       <p class="muted small">
         Article text and images come live from Wikipedia and are available under
@@ -189,6 +194,13 @@
       </div>
 
       <div class="challenge-banner" id="challenge-banner" hidden></div>
+
+      <div class="ghost-line" id="ghost-line" hidden
+           title="Where your challenger was when their clock read what yours reads now.">
+        <span class="ghost-icon" id="ghost-icon">👻</span>
+        <span class="ghost-text" id="ghost-text" aria-live="polite"></span>
+        <span class="ghost-delta" id="ghost-delta" hidden></span>
+      </div>
     </div>
 
     <div class="article-wrap" id="article-wrap">

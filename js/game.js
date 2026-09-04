@@ -31,7 +31,10 @@ export class Race {
     this.onError = opts.onError || (() => {});
     this.onFinish = opts.onFinish || (() => {});
 
-    this.path = []; // [{ title, displayTitle }]
+    // [{ title, displayTitle, at, off }] — `at` is the clock reading on
+    // arrival, which is what turns a route into a set of splits; `off` counts
+    // the excursions that were rewound back into this article.
+    this.path = [];
     this.visited = new Set(); // every title seen, including backtracked
     this.status = 'idle'; // idle | loading | racing | finished
     this.won = false;
@@ -98,7 +101,7 @@ export class Race {
       }
 
       this.start = article.title;
-      this.path = [{ title: article.title, displayTitle: article.displayTitle }];
+      this.path = [{ title: article.title, displayTitle: article.displayTitle, at: 0, off: 0 }];
       this.visited.add(titleKey(article.title));
       this.status = 'racing';
       this.startedAt = performance.now();
@@ -127,7 +130,13 @@ export class Race {
         return false;
       }
 
-      this.path.push({ title: article.title, displayTitle: article.displayTitle });
+      // Read the clock before the push: this hop's split runs from here.
+      this.path.push({
+        title: article.title,
+        displayTitle: article.displayTitle,
+        at: this.elapsedMs,
+        off: 0
+      });
       this.visited.add(titleKey(article.title));
       this._loading = false;
       this.onArticle(article, this);
@@ -153,6 +162,10 @@ export class Race {
       const article = await fetchArticle(previous.title);
       this.path.pop();
       this.backs += 1;
+      // The time spent down there is already inside this article's split; the
+      // count is what says the split covers a detour rather than deliberation.
+      const back = this.path[this.path.length - 1];
+      back.off = (back.off || 0) + 1;
       this._loading = false;
       this.onArticle(article, this);
       this.onChange(this);
@@ -174,8 +187,11 @@ export class Race {
     try {
       const article = await fetchArticle(target.title);
       // Jumping back three costs what pressing Back three times would.
-      this.backs += this.path.length - 1 - index;
+      const popped = this.path.length - 1 - index;
+      this.backs += popped;
       this.path = this.path.slice(0, index + 1);
+      const to = this.path[index];
+      to.off = (to.off || 0) + popped;
       this._loading = false;
       this.onArticle(article, this);
       this.onChange(this);
@@ -216,6 +232,21 @@ export class Race {
     this.onChange(this);
   }
 
+  /**
+   * Time spent on each article of the kept route, aligned to `path`.
+   *
+   * A split runs from arriving somewhere to arriving at the next thing kept,
+   * so an excursion that was rewound is charged to the article it was launched
+   * from — which is where the decision was actually made. The splits therefore
+   * tile the whole run: they add up to the final time, penalties included.
+   */
+  hopTimes() {
+    const end = this.finishedMs ?? this.elapsedMs;
+    return this.path.map((step, i) =>
+      Math.max(0, (this.path[i + 1]?.at ?? end) - (step.at ?? 0))
+    );
+  }
+
   result() {
     return {
       mode: this.mode,
@@ -230,7 +261,9 @@ export class Race {
       navboxes: this.navboxes,
       dailyNumber: this.dailyNumber,
       challenge: this.challenge,
-      path: this.path.map((p) => p.title)
+      path: this.path.map((p) => p.title),
+      hopTimes: this.hopTimes(),
+      detours: this.path.map((p) => p.off || 0)
     };
   }
 }
