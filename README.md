@@ -11,8 +11,8 @@ back-button escape to Google.
 
 | Mode | What it does |
 | --- | --- |
-| **Daily challenge** | One race a day, the same for everyone, with a median to measure yourself against. Day 1 is Apple → Pearl Harbor. |
-| **Quick race** | Random pull from a curated pool of 63 races, filterable by difficulty. |
+| **Daily challenge** | One race a day, the same for everyone, always **hard**, with a median to measure yourself against. |
+| **Quick race** | Random pull from a curated pool of 209 races, filterable by difficulty. It remembers what it has dealt you, so races do not come round again until you have worked through the pool. |
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index — and a difficulty estimate before you commit. |
 | **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat. |
@@ -256,10 +256,34 @@ race starts.
 
 ### The daily schedule
 
-`PUZZLES[0]` is pinned to Daily #1; the rest is a seeded shuffle, so every
-player gets the same race on the same calendar day without a server. Day 1 is
-1 Sep 2026 (`DAILY_EPOCH` in `js/puzzles.js`). Adding races to the pool changes
-the order of future dailies — append rather than insert if that matters.
+The daily is **always a hard race** (`DAILY_DIFFICULTY` in `js/puzzles.js`):
+the schedule is a seeded shuffle of the hard tier only, so every player gets the
+same race on the same calendar day without a server. Day 1 is 1 Sep 2026
+(`DAILY_EPOCH`). Easy and medium races stay in the pool for the quick race and
+are otherwise never scheduled. With 62 hard races the schedule runs two months
+before it comes round again, so append hard races if you want a longer run.
+
+Days 1 to 4 are the exception. They were dealt before the daily became
+hard-only, and `SCHEDULED` pins them — by value, not by index — to the races
+they actually gave out, including the signature `Apple → Pearl Harbor` on day 1.
+Results are stored against the daily *number*, so renumbering a day that has
+been played silently reattaches somebody's score to a race they never ran. The
+hard rotation starts at day 5.
+
+The pool grows by **appending**, and the order is built to match. A single
+shuffle over the whole array would repermute everything the moment a race was
+added, moving days that have already been played — someone's stored result for
+Daily #3 would end up attached to a different race. So each batch is shuffled
+within itself (after filtering to the hard tier) and the blocks are
+concatenated: `POOL_BLOCKS` records where each batch ended, and an append can
+only ever add days to the end of the schedule.
+
+If you add races, append them and push a new boundary onto `POOL_BLOCKS`. Then
+check that nothing moved:
+
+```bash
+node -e "import('./js/puzzles.js').then(m=>console.log([...Array(5)].map((_,i)=>{const p=m.dailyPuzzle(new Date(2026,8,1+i));return '#'+p.number+' ['+p.difficulty+'] '+p.start+' -> '+p.target})))"
+```
 
 ### Checking the pool
 
