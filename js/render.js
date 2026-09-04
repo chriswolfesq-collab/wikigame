@@ -1,7 +1,7 @@
 // Turns raw Wikipedia HTML into a page the game controls: chrome removed,
 // every link either armed as a legal move or defused.
 
-import { parseWikiLink } from './util.js';
+import { parseWikiLink, titleKey } from './util.js';
 
 // Interface furniture that has no business in a race.
 const STRIP = [
@@ -19,11 +19,13 @@ const NAVBOX = '.navbox, .vertical-navbox, .navbox-styles, .sidebar, .infobox-na
 
 /**
  * @param {string} html   parse.text from the API
- * @param {{images:boolean, navboxes:boolean, visited:Set<string>}} opts
+ * @param {{images:boolean, navboxes:boolean, visited:Set<string>,
+ *          closed:Map<string,string>}} opts
+ *        `closed` is the No Highways board: title key -> the hub it belongs to.
  * @returns {HTMLElement} a detached container, ready to be swapped in
  */
 export function prepareArticle(html, opts = {}) {
-  const { images = true, navboxes = true, visited = null } = opts;
+  const { images = true, navboxes = true, visited = null, closed = null } = opts;
   const doc = new DOMParser().parseFromString(html, 'text/html');
   const root = document.createElement('div');
   root.className = 'wg-article';
@@ -79,7 +81,7 @@ export function prepareArticle(html, opts = {}) {
   });
   root.querySelectorAll('[bgcolor]').forEach((n) => n.classList.add('wg-tinted'));
 
-  root.querySelectorAll('a').forEach(armLink);
+  root.querySelectorAll('a').forEach((a) => armLink(a, closed));
 
   // Links to articles already on this run read as "been there" the way
   // visited links do on the real thing.
@@ -127,7 +129,7 @@ function collapseIntoDetails(box) {
   details.append(box);
 }
 
-function armLink(a) {
+function armLink(a, closed) {
   const href = a.getAttribute('href');
   const link = parseWikiLink(href);
 
@@ -148,6 +150,15 @@ function armLink(a) {
     return;
   }
 
+  // Closed by No Highways. Struck through rather than removed: knowing that
+  // the road you wanted is shut is part of the game this mode is asking you
+  // to play, and a silently missing link would just read as a broken board.
+  const hub = closed?.get(titleKey(link.title));
+  if (hub) {
+    closeLink(a, hub);
+    return;
+  }
+
   // A legal move. The href is removed so the article cannot be opened for
   // real in another tab straight out of the game board.
   a.classList.add('wg-link');
@@ -158,7 +169,25 @@ function armLink(a) {
   a.title = link.title;
 }
 
+/**
+ * Shut one link, in place. Also used on a link that only turned out to be a
+ * highway once it was followed — a redirect the board could not see.
+ */
+export function closeLink(a, hub) {
+  const span = document.createElement('span');
+  span.className = 'wg-nolink wg-closed';
+  span.innerHTML = a.innerHTML;
+  span.title = `${hub} is closed on this board`;
+  a.replaceWith(span);
+  return span;
+}
+
 /** Count of legal outgoing moves, shown in the race HUD. */
 export function countLinks(root) {
   return root.querySelectorAll('a.wg-link').length;
+}
+
+/** How many of this article's ways out No Highways took away. */
+export function countClosed(root) {
+  return root.querySelectorAll('.wg-closed').length;
 }

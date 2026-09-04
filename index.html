@@ -32,6 +32,7 @@
         <li>No search box, no URL bar, no back-button-into-Google. Fewest clicks and fastest time win.</li>
         <li><strong>Back</strong> costs five seconds a step and does not undo a click. Explore as much as you like — it goes on the clock, not on your route.</li>
         <li><strong>Contents</strong> jumps to a section and <strong>Find</strong> filters the links on the page. Both are free and unlimited — knowing which link to look for is the game, hunting for it in nineteen sections is not.</li>
+        <li>With <strong>No Highways</strong> on, the biggest articles on Wikipedia are struck through and cannot be clicked. Reaching for one costs you nothing — it is simply not a road.</li>
       </ol>
       <p class="rules-note">Everyone who opens the same challenge link races the exact same board — and if
         their run carried its pace, you race the ghost of it too.</p>
@@ -48,6 +49,10 @@
         <p class="muted" id="daily-status"></p>
       </div>
       <p class="crowd-line" id="daily-crowd" hidden></p>
+      <p class="muted small daily-note" id="daily-hubban" hidden>
+        No Highways is on, but the daily is always played with them open — one
+        shared board, one number to compare.
+      </p>
     </section>
 
     <section class="card">
@@ -64,6 +69,20 @@
         <button class="btn btn-ghost" id="btn-wild">Two random articles</button>
       </div>
       <p class="muted small">“Two random articles” pulls straight from Wikipedia — it can be brutal, and occasionally impossible.</p>
+    </section>
+
+    <section class="card card-mode">
+      <label class="switch switch-mode">
+        <input type="checkbox" id="opt-hubban">
+        <span><strong>No Highways</strong> — the <span id="hubban-count">30</span> biggest articles are closed</span>
+      </label>
+      <p class="muted small">
+        Every long race has the same optimal shape: climb to an article that
+        links to everything, then descend. United States, World War II, London,
+        Latin. Close those and the bridge has to be found in the subject matter
+        rather than climbed to out of it. Applies to quick races and your own
+        pairs; the daily always keeps them open.
+      </p>
     </section>
 
     <section class="card">
@@ -138,6 +157,10 @@
       <div class="matchup" id="challenge-matchup"></div>
       <div class="result-stats" id="challenge-stats"></div>
       <p class="muted small result-note" id="challenge-note" hidden></p>
+      <p class="muted small result-note" id="challenge-hubban" hidden>
+        Played with <strong>No Highways</strong>: the biggest articles on
+        Wikipedia are closed on this board, for them and for you.
+      </p>
 
       <details class="spoiler" id="challenge-path" hidden>
         <summary>Show the route they took <span class="spoiler-warn">spoiler</span></summary>
@@ -160,6 +183,8 @@
         <div class="hud-target">
           <span class="hud-label">Target</span>
           <strong id="hud-target-title"></strong>
+          <span class="hud-mod" id="hud-hubban" hidden
+                title="No Highways: the biggest articles on Wikipedia are closed on this board">No Highways</span>
         </div>
         <div class="hud-clock">
           <span class="hud-time" id="hud-time">0:00.0</span>

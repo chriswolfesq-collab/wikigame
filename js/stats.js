@@ -19,7 +19,7 @@ const BLANK = {
   dailyResults: {}, // dailyNumber -> { ms, clicks, won }
   dailySeen: {}, // dailyNumber -> [{ ms, clicks, won }] — every run this browser has seen
   history: [], // most recent first, capped
-  settings: { images: true, navboxes: true, ghost: true, theme: 'light' }
+  settings: { images: true, navboxes: true, ghost: true, hubBan: false, theme: 'light' }
 };
 
 let cache = null;
@@ -116,7 +116,7 @@ export function setSetting(key, value) {
 /**
  * @param {{mode:string,start:string,target:string,won:boolean,ms:number,
  *          clicks:number,path:string[],dailyNumber:number|null,hints:number,
- *          backs:number,seen:number,navboxes:boolean}} result
+ *          backs:number,seen:number,navboxes:boolean,hubBan:boolean}} result
  */
 export function record(result) {
   const s = load();
@@ -163,6 +163,9 @@ export function record(result) {
     // Navboxes roughly halve the ways out of a big article when off, so a
     // score only means something next to the setting it was made under.
     navboxes: result.navboxes !== false,
+    // Recorded so replaying a race from the history replays the board it was
+    // set on, and so a No Highways run never reads as an ordinary one.
+    hubBan: result.hubBan === true,
     path: result.path.slice(0, 30)
   });
   s.history = s.history.slice(0, 50);

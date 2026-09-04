@@ -2,6 +2,7 @@
 // path, runs the clock, and calls back when something changes.
 
 import { fetchArticle, resolveTitle } from './wiki.js';
+import { closedFor } from './hubs.js';
 import { titleKey } from './util.js';
 
 export const HINT_PENALTY_MS = 15000;
@@ -16,8 +17,9 @@ export const BACK_PENALTY_MS = 5000;
 export class Race {
   /**
    * @param {{start:string,target:string,mode:string,dailyNumber?:number|null,
-   *          challenge?:object|null, settings:object,
-   *          onChange:Function, onArticle:Function, onError:Function, onFinish:Function}} opts
+   *          challenge?:object|null, settings:object, hubBan?:boolean,
+   *          onChange:Function, onArticle:Function, onError:Function,
+   *          onFinish:Function, onBlocked?:Function}} opts
    */
   constructor(opts) {
     this.start = opts.start;
@@ -30,6 +32,7 @@ export class Race {
     this.onArticle = opts.onArticle || (() => {});
     this.onError = opts.onError || (() => {});
     this.onFinish = opts.onFinish || (() => {});
+    this.onBlocked = opts.onBlocked || (() => {});
 
     // [{ title, displayTitle, at, off }] — `at` is the clock reading on
     // arrival, which is what turns a route into a set of splits; `off` counts
@@ -48,6 +51,12 @@ export class Race {
     // is ever written back to them.
     this.settings = { images: true, navboxes: true, ...(opts.settings || {}) };
     this.navboxes = this.settings.navboxes !== false;
+
+    // No Highways. The board of closed titles cannot be built until the two
+    // endpoints have resolved — they are the one thing the mode never closes,
+    // and `USA` is not yet `United States` — so it is filled in by begin().
+    this.hubBan = Boolean(opts.hubBan);
+    this.closed = null;
     this.startedAt = null;
     this.finishedMs = null;
     this.error = null;
@@ -100,6 +109,10 @@ export class Race {
         );
       }
 
+      // Both titles are now the ones the board will use, which is what the
+      // closed list has to be built against.
+      if (this.hubBan) this.closed = closedFor(article.title, this.target);
+
       this.start = article.title;
       this.path = [{ title: article.title, displayTitle: article.displayTitle, at: 0, off: 0 }];
       this.visited.add(titleKey(article.title));
@@ -122,6 +135,18 @@ export class Race {
     try {
       const article = await fetchArticle(title);
       if (this.status !== 'racing') return false;
+
+      // A link written as a redirect — `U.S.` for United States — looks live
+      // on the board, because the board only ever saw the word. The rule is
+      // the resolved title, so the move is refused here instead, and it costs
+      // nothing: the board should have shut that link and could not.
+      const hub = this.closed?.get(titleKey(article.title));
+      if (hub) {
+        this._loading = false;
+        this.onBlocked(hub, title, this);
+        this.onChange(this);
+        return false;
+      }
 
       // A redirect can land us back where we already are.
       if (titleKey(article.title) === titleKey(this.current?.title)) {
@@ -259,6 +284,7 @@ export class Race {
       backs: this.backs,
       seen: this.visited.size,
       navboxes: this.navboxes,
+      hubBan: this.hubBan,
       dailyNumber: this.dailyNumber,
       challenge: this.challenge,
       path: this.path.map((p) => p.title),

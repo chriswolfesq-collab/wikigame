@@ -6,7 +6,8 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  * Routes:
  *   #/                          home
  *   #/race/Start/Target         open race
- *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&by=Name&p=A|B|C&t=..&daily=7
+ *   #/race/Start/Target?hb=1     open race with No Highways
+ *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&hb=1&by=Name&p=A|B|C&t=..&daily=7
  *                               a finished run — opens on the result, then races
  *
  * `t` is the pace of that run: one figure per click, which is what lets the
@@ -47,6 +48,10 @@ export function parseHash(hash = location.hash) {
       start: fromUrlTitle(segs[1]),
       target: fromUrlTitle(segs[2]),
       dailyNumber: q.has('daily') ? Number(q.get('daily')) : null,
+      // Unlike `nb`, this is a property of the race rather than of whoever
+      // wrote the link: absent has always meant the highways are open, and a
+      // link that does not carry it is an ordinary race for everyone.
+      hubBan: q.get('hb') === '1',
       mode: q.get('mode') || (q.has('daily') ? 'daily' : challenge ? 'challenge' : 'custom'),
       challenge
     };
@@ -54,10 +59,11 @@ export function parseHash(hash = location.hash) {
   return { route: 'home' };
 }
 
-export function raceHash({ start, target, mode, dailyNumber }) {
+export function raceHash({ start, target, mode, dailyNumber, hubBan }) {
   const q = new URLSearchParams();
   if (dailyNumber) q.set('daily', String(dailyNumber));
   else if (mode && mode !== 'custom') q.set('mode', mode);
+  if (hubBan) q.set('hb', '1');
   const qs = q.toString();
   return `#/race/${toUrlTitle(start)}/${toUrlTitle(target)}${qs ? '?' + qs : ''}`;
 }
@@ -127,6 +133,7 @@ export function challengeUrl({
   navboxes,
   by,
   dailyNumber,
+  hubBan,
   path,
   hopTimes
 }) {
@@ -136,6 +143,7 @@ export function challengeUrl({
     q.set('clicks', String(clicks));
     if (hints) q.set('h', String(hints));
     if (navboxes === false) q.set('nb', '0');
+    if (hubBan) q.set('hb', '1');
     if (by) q.set('by', by);
     if (dailyNumber) q.set('daily', String(dailyNumber));
     if (withPath && path && path.length > 1) {
@@ -174,13 +182,14 @@ function chain(clicks) {
  * spoil — the old share text put it in the second line. The link still carries
  * the board for anyone who wants to play it.
  */
-export function shareBlock({ ms, clicks, won, dailyNumber, hints, backs, navboxes, url }) {
+export function shareBlock({ ms, clicks, won, dailyNumber, hints, backs, navboxes, hubBan, url }) {
   const head = dailyNumber ? `The Wikipedia Game — Daily #${dailyNumber}` : 'The Wikipedia Game';
 
   const score = [`${clicks} click${clicks === 1 ? '' : 's'}`, fmtTimeShort(ms)];
   if (hints) score.push(`👁 ${hints}`);
   if (backs) score.push(`↩ ${backs}`);
   if (navboxes === false) score.push('no navboxes');
+  if (hubBan) score.push('no highways');
 
   const body = won
     ? [chain(clicks), score.join(' · ')]

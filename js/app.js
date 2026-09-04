@@ -2,11 +2,12 @@
 
 import { $, $$, el, fmtTime, fmtTimeShort, fmtDelta, debounce, copyText, titleKey, toUrlTitle, median } from './util.js';
 import { Race, HINT_PENALTY_MS, BACK_PENALTY_MS } from './game.js';
-import { prepareArticle, countLinks, scrubEvents } from './render.js';
+import { prepareArticle, countLinks, countClosed, closeLink, scrubEvents } from './render.js';
 import { searchTitles, resolveTitle, randomArticles, fetchSummary } from './wiki.js';
 import { findShortestRoute } from './solver.js';
 import * as finder from './finder.js';
 import { DIFFICULTY, dailyPuzzle, randomPuzzle, msUntilNextDaily } from './puzzles.js';
+import { HUB_COUNT, closedFor } from './hubs.js';
 import * as store from './stats.js';
 import * as scoreboard from './scoreboard.js';
 import { parseHash, raceHash, raceUrl, challengeUrl, shareBlock } from './share.js';
@@ -75,6 +76,7 @@ async function route() {
       target: r.target,
       mode: r.mode,
       dailyNumber: r.dailyNumber,
+      hubBan: r.hubBan,
       challenge: r.challenge
     };
     // A link carrying someone's score opens on that result, so the reader
@@ -141,6 +143,9 @@ function showChallenge(config) {
     : '';
   note.hidden = !note.textContent;
 
+  const closedNote = $('#challenge-hubban');
+  closedNote.hidden = !config.hubBan;
+
   const spoiler = $('#challenge-path');
   if (c.path && c.path.length > 1) {
     spoiler.open = false;
@@ -192,7 +197,7 @@ function wireHome() {
 
   $('#btn-random').addEventListener('click', () => {
     const p = randomPuzzle(state.difficulty, state.lastConfig);
-    navigate(raceHash({ start: p.start, target: p.target, mode: 'random' }));
+    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: hubBanOn() }));
   });
 
   $('#btn-wild').addEventListener('click', async (e) => {
@@ -202,7 +207,7 @@ function wireHome() {
     try {
       const [a, b] = await randomArticles(2);
       if (!a || !b) throw new Error('Wikipedia did not hand back two usable articles.');
-      navigate(raceHash({ start: a, target: b, mode: 'wild' }));
+      navigate(raceHash({ start: a, target: b, mode: 'wild', hubBan: hubBanOn() }));
     } catch (err) {
       toast(err.message);
     } finally {
@@ -245,6 +250,14 @@ function wireHome() {
   });
 
   const s = store.getSettings();
+  const hub = $('#opt-hubban');
+  hub.checked = store.getSettings().hubBan === true;
+  $('#hubban-count').textContent = String(HUB_COUNT);
+  hub.addEventListener('change', () => {
+    store.setSetting('hubBan', hub.checked);
+    renderHome();
+  });
+
   const imgs = $('#opt-images');
   const navs = $('#opt-navboxes');
   const gho = $('#opt-ghost');
@@ -312,6 +325,12 @@ function renderHome() {
       : `Next daily in ${untilNextDaily()}.`;
     $('#btn-daily').textContent = "Play today's race";
   }
+
+  // The daily is one shared board, so No Highways does not touch it: a run
+  // on a smaller graph stored against Daily #12 would be a different race
+  // wearing the same number, in the record and in the median both.
+  const dailyNote = $('#daily-hubban');
+  dailyNote.hidden = !hubBanOn();
 
   renderCrowd('#daily-crowd', p.number, done?.won ? done.clicks : null);
 
@@ -405,6 +424,11 @@ function renderStats(summary, streak) {
           { class: h.won ? 'won' : 'lost' },
           el('span', { class: 'h-mark', text: h.won ? '✓' : '✕' }),
           el('span', { class: 'h-race', text: `${h.start} → ${h.target}` }),
+          // Race again replays the board the row was set on, so the row has to
+          // say when that is not the ordinary one.
+          h.hubBan
+            ? el('span', { class: 'h-mod', title: 'Played with No Highways', text: 'NH' })
+            : null,
           el('span', { class: 'h-score', text: h.won ? `${h.clicks} · ${fmtTimeShort(h.ms)}` : '—' }),
           // The row used to be one unlabelled button: the race name was the
           // control, and nothing said so until you hovered or tabbed onto it.
@@ -412,8 +436,9 @@ function renderStats(summary, streak) {
             'button',
             {
               class: 'btn btn-ghost small h-again',
-              title: `Race ${h.start} → ${h.target} again`,
-              onclick: () => navigate(raceHash({ start: h.start, target: h.target, mode: 'custom' }))
+              title: `Race ${h.start} → ${h.target} again${h.hubBan ? ', with No Highways' : ''}`,
+              onclick: () =>
+                navigate(raceHash({ start: h.start, target: h.target, mode: 'custom', hubBan: h.hubBan }))
             },
             el('span', { text: '↻' }),
             el('span', { class: 'btn-word', text: ' Race again' })
@@ -549,7 +574,7 @@ const estimateCustomDifficulty = debounce(async () => {
     return;
   }
 
-  const pair = `${titleKey(rawStart)}\u241f${titleKey(rawTarget)}`;
+  const pair = `${titleKey(rawStart)}\u241f${titleKey(rawTarget)}${hubBanOn() ? '\u241fhb' : ''}`;
   if (pair === state.estimatePair) return; // already answered, or in flight
   state.estimatePair = pair;
 
@@ -568,7 +593,10 @@ const estimateCustomDifficulty = debounce(async () => {
       return;
     }
 
-    const route = await findShortestRoute(a.title, b.title, { signal: controller.signal });
+    const route = await findShortestRoute(a.title, b.title, {
+      signal: controller.signal,
+      closed: hubBanOn() ? closedFor(a.title, b.title) : null
+    });
     if (controller.signal.aborted) return void (state.estimatePair = null);
     out.textContent = difficultyLine(a.title, b.title, route);
     out.hidden = !out.textContent;
@@ -621,7 +649,7 @@ async function startCustomRace() {
       return void (status.textContent = 'Start and target are the same article.');
     }
     status.textContent = '';
-    navigate(raceHash({ start: a.title, target: b.title, mode: 'custom' }));
+    navigate(raceHash({ start: a.title, target: b.title, mode: 'custom', hubBan: hubBanOn() }));
   } catch (err) {
     status.textContent = err.message;
   }
@@ -722,6 +750,11 @@ function onArticleClick(e) {
  * Only for that race. Your stored settings are never written — leave the race
  * and your own board is exactly as you left it.
  */
+/** The home screen's standing choice, which every race it launches carries. */
+function hubBanOn() {
+  return store.getSettings().hubBan === true;
+}
+
 function raceSettings(config) {
   const mine = store.getSettings();
   if (!config.challenge) return mine;
@@ -761,7 +794,7 @@ async function skipRace() {
       const [a, b] = await randomArticles(2);
       if (!a || !b) throw new Error('Wikipedia did not hand back two usable articles.');
       endRace();
-      navigate(raceHash({ start: a, target: b, mode: 'wild' }));
+      navigate(raceHash({ start: a, target: b, mode: 'wild', hubBan: race.hubBan }));
     } catch (err) {
       toast(err.message);
     } finally {
@@ -773,7 +806,9 @@ async function skipRace() {
 
   const p = randomPuzzle(state.difficulty, state.lastConfig);
   endRace();
-  navigate(raceHash({ start: p.start, target: p.target, mode: 'random' }));
+  // A skip is meant to be the same kind of race again, and the board it is
+  // played on is part of that kind.
+  navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: race.hubBan }));
 }
 
 function startRace(config) {
@@ -786,6 +821,7 @@ function startRace(config) {
   state.raceHash = location.hash;
   showScreen('race');
   $('#btn-skip').hidden = !REROLLABLE.has(config.mode);
+  $('#hud-hubban').hidden = !config.hubBan;
 
   $('#article-host').replaceChildren(el('p', { class: 'muted', text: 'Loading the opening article…' }));
   $('#hud-target-title').textContent = config.target;
@@ -798,6 +834,7 @@ function startRace(config) {
     settings: raceSettings(config),
     onChange: renderHud,
     onArticle: showArticle,
+    onBlocked: showBlocked,
     onError: (err, r) => {
       const message = err.message || 'Wikipedia did not answer. Try that link again.';
       // A failure during begin() leaves nothing on the board to go back to.
@@ -1009,16 +1046,34 @@ function renderHud(race) {
   trail.scrollLeft = trail.scrollWidth;
 }
 
+/**
+ * A link that only turned out to be a highway once it was followed: the board
+ * saw `U.S.`, Wikipedia handed back United States. The move is refused for
+ * free, and every copy of that link on this page is struck through, so the
+ * board catches up with the rule rather than offering it again.
+ */
+function showBlocked(hub, attempted) {
+  toast(`${hub} is closed on this board.`);
+  const key = titleKey(attempted);
+  $$('#article-host a.wg-link').forEach((a) => {
+    if (titleKey(a.dataset.wgTitle) === key) closeLink(a, hub);
+  });
+}
+
 function showArticle(article, race) {
   const settings = race.settings;
   const host = $('#article-host');
-  const prepared = prepareArticle(article.html, { ...settings, visited: race.visited });
+  const prepared = prepareArticle(article.html, {
+    ...settings,
+    visited: race.visited,
+    closed: race.closed
+  });
 
   // With no floated images or infobox, the full column is a punishing measure.
   host.classList.toggle('no-images', !settings.images);
   host.replaceChildren(
     scrubEvents(el('h1', { class: 'article-title', html: article.displayTitle })),
-    articleMetaEl(countLinks(prepared)),
+    articleMetaEl(countLinks(prepared), countClosed(prepared)),
     prepared
   );
   finder.attach(prepared);
@@ -1031,20 +1086,29 @@ function showArticle(article, race) {
 // letting someone scroll the whole page to find out.
 const THIN_ARTICLE = 8;
 
-function articleMetaEl(links) {
+function articleMetaEl(links, closed = 0) {
+  // What the mode cost this particular article — the difference between an
+  // article that lost two ways out and one that lost forty.
+  const shut = closed ? `, ${closed.toLocaleString()} closed` : '';
+
   if (links === 0) {
     return el('p', {
       class: 'article-meta is-dead-end',
-      text: 'Dead end — nothing links out of here. Step back.'
+      text: closed
+        ? `Dead end — every way out of here is closed. Step back.`
+        : 'Dead end — nothing links out of here. Step back.'
     });
   }
   if (links <= THIN_ARTICLE) {
     return el('p', {
       class: 'article-meta is-dead-end',
-      text: `Nearly a dead end — only ${links} link${links === 1 ? '' : 's'} out of here.`
+      text: `Nearly a dead end — only ${links} link${links === 1 ? '' : 's'} out of here${shut}.`
     });
   }
-  return el('p', { class: 'article-meta', text: `${links.toLocaleString()} links out of here` });
+  return el('p', {
+    class: 'article-meta',
+    text: `${links.toLocaleString()} links out of here${shut}`
+  });
 }
 
 async function peekTarget() {
@@ -1115,7 +1179,8 @@ function finishRace(result) {
         ? `You opened ${result.seen} articles to find a route of ${result.clicks}.`
         : `You opened ${result.seen} articles before giving up.`
       : null,
-    result.navboxes === false ? 'Navigation boxes were off — the harder board.' : null
+    result.navboxes === false ? 'Navigation boxes were off — the harder board.' : null,
+    result.hubBan ? `No Highways — the ${HUB_COUNT} biggest articles were closed.` : null
   ].filter(Boolean);
   note.textContent = lines.join(' ');
   note.hidden = !lines.length;
@@ -1335,7 +1400,11 @@ function revealShortestRoute(result) {
     el('p', { class: 'muted best-working' }, el('span', { class: 'spinner' }), 'Working it out…')
   );
 
-  findShortestRoute(result.start, result.target, { signal: controller.signal }).then((route) => {
+  findShortestRoute(result.start, result.target, {
+    signal: controller.signal,
+    // The best anyone could have done has to be a route they could have taken.
+    closed: result.hubBan ? closedFor(result.start, result.target) : null
+  }).then((route) => {
     if (controller.signal.aborted) return;
     box.replaceChildren(heading(), ...bestRouteBody(route, result));
   });
@@ -1366,7 +1435,7 @@ function bestRouteBody(route, result) {
     el('p', {
       class: 'best-none',
       text: route.exhaustive
-        ? 'No route in two clicks exists. Three was the best anyone could have done.'
+        ? `No route in two clicks exists${result.hubBan ? ' with the highways closed' : ''}. Three was the best anyone could have done.`
         : 'No route in two clicks turned up.'
     }),
     el('p', {
@@ -1483,13 +1552,13 @@ function wireModals() {
     const target = r?.start || c?.start;
     if (!start || !target) return;
     $('#modal-result').hidden = true;
-    navigate(raceHash({ start, target, mode: 'custom' }));
+    navigate(raceHash({ start, target, mode: 'custom', hubBan: r?.hubBan ?? c?.hubBan }));
   });
 
   $('#btn-new').addEventListener('click', () => {
     const p = randomPuzzle(state.difficulty, state.lastConfig);
     $('#modal-result').hidden = true;
-    navigate(raceHash({ start: p.start, target: p.target, mode: 'random' }));
+    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: hubBanOn() }));
   });
   $('#btn-home').addEventListener('click', goHome);
 }

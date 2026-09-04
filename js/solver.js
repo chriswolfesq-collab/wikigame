@@ -10,6 +10,10 @@
 //
 // A found route is a genuine shortest route. "No route in two" is only a claim
 // about the whole graph when the sweep ran to the end — hence `exhaustive`.
+//
+// With No Highways on, the same sweep runs against a smaller graph: a hop
+// through a closed article is not a route the player could have taken, so it
+// is not one this offers them.
 
 import { linksToAny, fetchLinkFanout, fetchRedirects } from './wiki.js';
 import { titleKey } from './util.js';
@@ -24,27 +28,30 @@ const CACHE_MAX = 200;
 /**
  * @param {string} start canonical title
  * @param {string} target canonical title
- * @param {{signal?:AbortSignal}} opts
+ * @param {{signal?:AbortSignal, closed?:Map<string,string>|null}} opts
+ *        `closed` is a No Highways board: a route may not pass through one of
+ *        those, so neither may the route this offers as the best anyone could
+ *        have done.
  * @returns {Promise<
  *   {hops:number, path:string[]} |
  *   {hops:null, atLeast:number, exhaustive:boolean, examined:number} |
  *   {error:string}
  * >}
  */
-export async function findShortestRoute(start, target, { signal } = {}) {
-  const cached = readCache(start, target);
+export async function findShortestRoute(start, target, { signal, closed = null } = {}) {
+  const cached = readCache(start, target, closed);
   if (cached) return cached;
 
   try {
-    const result = await search(start, target, signal);
-    if (!signal?.aborted && !result.error) writeCache(start, target, result);
+    const result = await search(start, target, signal, closed);
+    if (!signal?.aborted && !result.error) writeCache(start, target, result, closed);
     return result;
   } catch (err) {
     return { error: err.message || 'Could not reach Wikipedia.' };
   }
 }
 
-async function search(start, target, signal) {
+async function search(start, target, signal, closed) {
   // A link to any redirect of the target is a link to the target, and the
   // popular articles have dozens of them. `pltitles` takes 50 titles, and the
   // target itself has to be one of them.
@@ -70,7 +77,14 @@ async function search(start, target, signal) {
 
     for (const page of pages) {
       examined += 1;
-      if (page.linksToTarget && titleKey(page.title) !== startKey) {
+      // A hop through a closed article is not a route on this board. The
+      // sweep still has to walk past it, so the count of what was examined
+      // stays honest.
+      if (
+        page.linksToTarget &&
+        titleKey(page.title) !== startKey &&
+        !closed?.has(titleKey(page.title))
+      ) {
         return { hops: 2, path: [start, page.title, target] };
       }
     }
@@ -93,23 +107,25 @@ async function search(start, target, signal) {
 /* ----------------------------------------------------------------- cache */
 
 // Routes do not change between two races, and "Play again" is one click away.
-function cacheKey(start, target) {
-  return `${titleKey(start)}␟${titleKey(target)}`;
+// The ban is part of the question, not just the answer: the two-hop route
+// through United States is still there for anyone racing the ordinary board.
+function cacheKey(start, target, closed) {
+  return `${titleKey(start)}␟${titleKey(target)}${closed ? '␟hb' : ''}`;
 }
 
-function readCache(start, target) {
+function readCache(start, target, closed) {
   try {
     const all = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-    return all[cacheKey(start, target)] || null;
+    return all[cacheKey(start, target, closed)] || null;
   } catch {
     return null;
   }
 }
 
-function writeCache(start, target, result) {
+function writeCache(start, target, result, closed) {
   try {
     const all = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
-    all[cacheKey(start, target)] = result;
+    all[cacheKey(start, target, closed)] = result;
     const keys = Object.keys(all);
     for (const k of keys.slice(0, Math.max(0, keys.length - CACHE_MAX))) delete all[k];
     localStorage.setItem(CACHE_KEY, JSON.stringify(all));
