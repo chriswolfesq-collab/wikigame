@@ -19,7 +19,7 @@ const BLANK = {
   dailyResults: {}, // dailyNumber -> { ms, clicks, won }
   dailySeen: {}, // dailyNumber -> [{ ms, clicks, won }] — every run this browser has seen
   history: [], // most recent first, capped
-  settings: { images: true, navboxes: true, theme: 'light' }
+  settings: { images: true, navboxes: true, ghost: true, theme: 'light' }
 };
 
 let cache = null;
