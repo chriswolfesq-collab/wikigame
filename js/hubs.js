@@ -8,7 +8,7 @@ import { titleKey } from './util.js';
 // two articles were. It is a real strategy, it works from almost anywhere, and
 // it is the same strategy every time.
 //
-// No Highways closes them. What is left is a race you have to actually
+// Expert Mode closes them. What is left is a race you have to actually
 // navigate: the bridge has to be found in the subject matter rather than
 // climbed to out of it.
 //

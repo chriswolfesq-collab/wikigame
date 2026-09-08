@@ -20,7 +20,7 @@
 // first, so it is genuinely the shortest. Absence is only ever reported for a
 // depth whose sweep actually ran to the end — `ruledOut` says which.
 //
-// With No Highways on, every sweep runs against a smaller graph: a hop through
+// In Expert Mode, every sweep runs against a smaller graph: a hop through
 // a closed article is not a route the player could have taken, so it is not one
 // this offers them.
 
@@ -60,7 +60,7 @@ const CACHE_MAX = 200;
  * @param {string} start canonical title
  * @param {string} target canonical title
  * @param {{signal?:AbortSignal, closed?:Map<string,string>|null}} opts
- *        `closed` is a No Highways board: a route may not pass through one of
+ *        `closed` is an Expert Mode board: a route may not pass through one of
  *        those, so neither may the route this offers as the best anyone could
  *        have done.
  * @returns {Promise<

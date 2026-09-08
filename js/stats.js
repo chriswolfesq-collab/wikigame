@@ -168,7 +168,7 @@ export function record(result) {
     // score only means something next to the setting it was made under.
     navboxes: result.navboxes !== false,
     // Recorded so replaying a race from the history replays the board it was
-    // set on, and so a No Highways run never reads as an ordinary one.
+    // set on, and so an Expert Mode run never reads as an ordinary one.
     hubBan: result.hubBan === true,
     path: result.path.slice(0, 30)
   });

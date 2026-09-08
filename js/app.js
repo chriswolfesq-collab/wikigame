@@ -327,7 +327,7 @@ function renderHome() {
     $('#btn-daily').textContent = "Play today's race";
   }
 
-  // The daily is one shared board, so No Highways does not touch it: a run
+  // The daily is one shared board, so Expert Mode does not touch it: a run
   // on a smaller graph stored against Daily #12 would be a different race
   // wearing the same number, in the record and in the median both.
   const dailyNote = $('#daily-hubban');
@@ -435,7 +435,7 @@ function renderStats(summary, streak) {
           // Race again replays the board the row was set on, so the row has to
           // say when that is not the ordinary one.
           h.hubBan
-            ? el('span', { class: 'h-mod', title: 'Played with No Highways', text: 'NH' })
+            ? el('span', { class: 'h-mod', title: 'Played in Expert Mode', text: 'EX' })
             : null,
           el('span', {
             class: 'h-score',
@@ -451,7 +451,7 @@ function renderStats(summary, streak) {
             'button',
             {
               class: 'btn btn-ghost small h-again',
-              title: `Race ${h.start} → ${h.target} again${h.hubBan ? ', with No Highways' : ''}`,
+              title: `Race ${h.start} → ${h.target} again${h.hubBan ? ', in Expert Mode' : ''}`,
               onclick: () =>
                 navigate(raceHash({ start: h.start, target: h.target, mode: 'custom', hubBan: h.hubBan }))
             },
@@ -1064,7 +1064,7 @@ function renderHud(race) {
 }
 
 /**
- * A link that only turned out to be a highway once it was followed: the board
+ * A link that only turned out to be a closed hub once it was followed: the board
  * saw `U.S.`, Wikipedia handed back United States. The move is refused for
  * free, and every copy of that link on this page is struck through, so the
  * board catches up with the rule rather than offering it again.
@@ -1197,7 +1197,7 @@ function finishRace(result) {
         : `You opened ${result.seen} articles before giving up.`
       : null,
     result.navboxes === false ? 'Navigation boxes were off — the harder board.' : null,
-    result.hubBan ? `No Highways — the ${HUB_COUNT} biggest articles were closed.` : null
+    result.hubBan ? `Expert Mode — the ${HUB_COUNT} biggest articles were closed.` : null
   ].filter(Boolean);
   note.textContent = lines.join(' ');
   note.hidden = !lines.length;
@@ -1496,7 +1496,7 @@ function bestRouteBody(route, result) {
   // part of it the sweeps got to read decides how firmly it can be said, and
   // the two sweeps can end in different states — hence `ruledOut` rather than
   // a single flag.
-  const board = result.hubBan ? ' with the highways closed' : '';
+  const board = result.hubBan ? ' in Expert Mode' : '';
   const links = route.examined.toLocaleString();
   const deep = (route.deepExamined || 0).toLocaleString();
   const beyond = route.deepExamined > 0;

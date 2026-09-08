@@ -6,7 +6,7 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  * Routes:
  *   #/                          home
  *   #/race/Start/Target         open race
- *   #/race/Start/Target?hb=1     open race with No Highways
+ *   #/race/Start/Target?hb=1     open race in Expert Mode
  *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&hb=1&by=Name&p=A|B|C&t=..&daily=7
  *                               a finished run — opens on the result, then races
  *
@@ -49,7 +49,7 @@ export function parseHash(hash = location.hash) {
       target: fromUrlTitle(segs[2]),
       dailyNumber: q.has('daily') ? Number(q.get('daily')) : null,
       // Unlike `nb`, this is a property of the race rather than of whoever
-      // wrote the link: absent has always meant the highways are open, and a
+      // wrote the link: absent has always meant the big articles are open, and a
       // link that does not carry it is an ordinary race for everyone.
       hubBan: q.get('hb') === '1',
       mode: q.get('mode') || (q.has('daily') ? 'daily' : challenge ? 'challenge' : 'custom'),
@@ -204,7 +204,7 @@ export function shareBlock({
   if (hints) score.push(`👁 ${hints}`);
   if (backs) score.push(`↩ ${backs}`);
   if (navboxes === false) score.push('no navboxes');
-  if (hubBan) score.push('no highways');
+  if (hubBan) score.push('expert');
 
   const body = won
     ? [chain(clicks), score.join(' · ')]

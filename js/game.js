@@ -52,7 +52,7 @@ export class Race {
     this.settings = { images: true, navboxes: true, ...(opts.settings || {}) };
     this.navboxes = this.settings.navboxes !== false;
 
-    // No Highways. The board of closed titles cannot be built until the two
+    // Expert Mode. The board of closed titles cannot be built until the two
     // endpoints have resolved — they are the one thing the mode never closes,
     // and `USA` is not yet `United States` — so it is filled in by begin().
     this.hubBan = Boolean(opts.hubBan);

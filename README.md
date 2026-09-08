@@ -15,7 +15,7 @@ back-button escape to Google.
 | **Quick race** | Random pull from a curated pool of 209 races, filterable by difficulty. It remembers what it has dealt you, so races do not come round again until you have worked through the pool. |
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index — and a difficulty estimate before you commit. |
-| **No Highways** | A switch, not a race of its own: the thirty biggest articles on Wikipedia are closed, on quick races and your own pairs. It rides in the link, so a challenge is played on the board it was set on. |
+| **Expert Mode** | A switch, not a race of its own: the thirty biggest articles on Wikipedia are closed, on quick races and your own pairs. It rides in the link, so a challenge is played on the board it was set on. |
 | **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat, and with your pace running alongside them as a ghost. |
 
 **Copy result** gives you a compact block for a group chat:
@@ -55,7 +55,7 @@ carries the board for anyone who wants to play it.
 - The HUD shows **clicks · seen** — the route you are on, and how many articles
   you have opened in all. They are the same number until you double back.
 - **Peek** shows the target's summary and adds 15 seconds to your final time.
-- With **No Highways** on, a hub article is struck through and cannot be
+- In **Expert Mode**, a hub article is struck through and cannot be
   clicked. Reaching for one costs nothing — it is simply not a road.
 - Racing a challenge puts a **ghost** in the HUD: where the challenger was when
   their clock read what yours reads now. It can be switched off in settings.
@@ -149,7 +149,7 @@ Pages, S3). There is nothing to configure.
 | `js/game.js` | Race state machine — path, clock, win detection. Knows nothing about the DOM. |
 | `js/app.js` | Routing, home screen, race board, results. |
 | `js/puzzles.js` | The curated race pool and the daily schedule. |
-| `js/hubs.js` | The No Highways list: thirty hub articles and every title that redirects to one. |
+| `js/hubs.js` | The Expert Mode list: thirty hub articles and every title that redirects to one. |
 | `js/share.js` | Challenge-link encoding and share text. |
 | `js/stats.js` | Player history in `localStorage`, plus the daily runs this browser has seen. |
 | `js/scoreboard.js` | The optional shared scoreboard. Inert unless configured. |
@@ -157,7 +157,7 @@ Pages, S3). There is nothing to configure.
 
 Routes live in the hash, so the whole thing is one static page:
 `#/race/Apple/Pearl_Harbor?daily=1`, `#/race/Apple/Pearl_Harbor?hb=1` for a
-race with the highways closed, or with a finished run attached,
+race in Expert Mode, or with a finished run attached,
 `#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&hb=1&p=<route>&t=<pace>`.
 
 `mode` carries how the race was chosen — `daily`, `random` (curated pool),
@@ -177,7 +177,7 @@ degrades to no route rather than breaking the link, and a `t` whose length does
 not line up with the route it arrived with is dropped rather than pinned to the
 wrong hops.
 
-### No Highways
+### Expert Mode
 
 Every long race on Wikipedia has the same optimal shape: climb to an article
 that links to everything, then descend. United States, World War II, London,
@@ -185,7 +185,7 @@ Latin — reach one of those and the rest of the board opens up, whatever the tw
 articles were. It is a real strategy, it works from almost anywhere, and it is
 the same strategy every time.
 
-Switch No Highways on and the thirty of them in `js/hubs.js` are closed. They
+Switch Expert Mode on and the thirty of them in `js/hubs.js` are closed. They
 are struck through on the page rather than deleted: knowing that the road you
 wanted is shut is part of the game this mode is asking you to play, and a
 silently missing link would just read as a broken board. The tally at the top
@@ -360,7 +360,7 @@ request — the trick hop two already used, one level deeper. A three-hop answer
 costs a couple of dozen requests, paced a quarter of a second apart to stay
 inside what the anonymous API will take.
 
-That matters most for the races that need it. Hard pairs and No Highways both
+That matters most for the races that need it. Hard pairs and Expert Mode both
 push real routes out past two hops, which is exactly where the old search went
 quiet.
 
@@ -380,8 +380,8 @@ the end — `ruledOut` in the result says which:
 Depth is also the optional half of the search: if it is throttled or the
 connection drops, the deep sweep is abandoned and the shallow answer — which is
 proved — is reported on its own rather than the whole thing failing. Answers are
-cached in `localStorage`, keyed by the pair and by whether the highways were
-closed.
+cached in `localStorage`, keyed by the pair and by whether the big articles
+were closed.
 
 Routes are computed over Wikipedia's own link table, which includes links from
 navigation boxes. With navboxes switched off in settings, a suggested route may
@@ -456,7 +456,7 @@ race in progress needs them more, so a pending one is cancelled the moment a
 race starts. Now that the search reaches three hops it can tell a wall from a
 hunt — *"nothing inside three clicks"* is a different warning from *"nothing
 inside two"* — and it sizes the pair up against the board it will be played on,
-so turning No Highways on changes the estimate.
+so turning Expert Mode on changes the estimate.
 
 ### The daily schedule
 
