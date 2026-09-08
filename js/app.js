@@ -6,11 +6,28 @@ import { prepareArticle, countLinks, countClosed, closeLink, scrubEvents } from 
 import { searchTitles, resolveTitle, randomArticles, fetchSummary } from './wiki.js';
 import { findShortestRoute } from './solver.js';
 import * as finder from './finder.js';
-import { DIFFICULTY, dailyPuzzle, randomPuzzle, msUntilNextDaily } from './puzzles.js';
+import {
+  DIFFICULTY,
+  dailyPuzzle,
+  randomPuzzle,
+  msUntilNextDaily,
+  newRoundSeed,
+  ROUND_HOLES
+} from './puzzles.js';
+import * as round from './round.js';
 import { HUB_COUNT, closedFor } from './hubs.js';
 import * as store from './stats.js';
 import * as scoreboard from './scoreboard.js';
-import { parseHash, raceHash, raceUrl, challengeUrl, shareBlock } from './share.js';
+import {
+  parseHash,
+  raceHash,
+  roundHash,
+  raceUrl,
+  baseUrl,
+  challengeUrl,
+  shareBlock,
+  scorecardBlock
+} from './share.js';
 
 const state = {
   race: null,
@@ -18,6 +35,7 @@ const state = {
   lastConfig: null,
   pendingChallenge: null,
   raceHash: null,
+  round: null, // { card, index } while a round is being played
   ghost: null,
   historyExpanded: false,
   timer: null,
@@ -37,6 +55,7 @@ function boot() {
   applyTheme(store.getSettings().theme);
   wireHome();
   wireChallenge();
+  wireRound();
   wireRace();
   wireModals();
   renderHome();
@@ -71,6 +90,15 @@ async function route() {
   }
 
   const r = parseHash();
+
+  // Leaving the round route puts the card down. It stays in storage, so the
+  // home screen can offer to resume it.
+  if (r.route !== 'round') state.round = null;
+
+  if (r.route === 'round') {
+    startRound(r.seed, { difficulty: r.difficulty, hubBan: r.hubBan });
+    return;
+  }
   if (r.route === 'race') {
     const config = {
       start: r.start,
@@ -116,6 +144,13 @@ function showChallenge(config) {
   endRace();
   const c = config.challenge;
   const who = c.by || 'Someone';
+
+  // The finished-round card borrows this screen, so take it back.
+  state.roundCard = null;
+  $('#challenge-scorecard').hidden = true;
+  $('#btn-accept').textContent = 'Race it';
+  $('#challenge-foot').textContent =
+    'Same start, same target, same rules. Clock starts when the first article loads.';
 
   $('#challenge-kicker').textContent = config.dailyNumber
     ? `Daily #${config.dailyNumber}`
@@ -170,7 +205,14 @@ function showChallenge(config) {
 function wireChallenge() {
   $('#btn-accept').addEventListener('click', () => {
     const config = state.pendingChallenge;
-    if (config) startRace(config);
+    if (config) return startRace(config);
+    // The finished-round card borrows this screen; its button plays the five
+    // again rather than accepting anything.
+    const card = state.roundCard;
+    if (card) {
+      round.clear();
+      navigate(roundHash({ seed: card.seed, difficulty: card.difficulty, hubBan: card.hubBan }));
+    }
   });
   $('#btn-challenge-home').addEventListener('click', goHome);
 }
@@ -276,6 +318,31 @@ function wireHome() {
   });
 }
 
+/** A round left half-played is worth offering back rather than losing. */
+function renderRoundCard() {
+  const card = round.load();
+  const pill = $('#round-pill');
+  const resume = $('#btn-round-resume');
+  const status = $('#round-status');
+
+  if (!card) {
+    pill.hidden = true;
+    resume.hidden = true;
+    status.textContent = `${ROUND_HOLES} holes, scored against par.`;
+    return;
+  }
+
+  const t = round.totals(card);
+  const done = round.nextHole(card) < 0;
+  pill.textContent = card.seed;
+  pill.hidden = false;
+  resume.hidden = false;
+  resume.textContent = done ? 'See the card' : 'Resume';
+  status.textContent = done
+    ? `Round ${card.seed}: ${t.holed} of ${ROUND_HOLES} holed${t.scored ? `, ${t.over === 0 ? 'level par' : `+${t.over}`}` : ''}.`
+    : `Round ${card.seed} is ${t.played} of ${ROUND_HOLES} in. Starting a new one puts this card down.`;
+}
+
 function renderDifficultyHint() {
   const d = DIFFICULTY[state.difficulty];
   $('#difficulty-hint').textContent = d ? d.hint : 'Anything from the pool.';
@@ -332,6 +399,8 @@ function renderHome() {
   // wearing the same number, in the record and in the median both.
   const dailyNote = $('#daily-hubban');
   dailyNote.hidden = !hubBanOn();
+
+  renderRoundCard();
 
   renderCrowd('#daily-crowd', p.number, done?.won ? done.clicks : null);
 
@@ -779,6 +848,8 @@ function raceSettings(config) {
   return { ...mine, navboxes: config.challenge.navboxes ?? true };
 }
 
+// A round's five holes are dealt by its seed, so rerolling one would put the
+// player on a board nobody else opening that link would see.
 const REROLLABLE = new Set(['random', 'wild']);
 
 /**
@@ -843,6 +914,7 @@ function startRace(config) {
   $('#hud-target-title').textContent = config.target;
   $('#trail').replaceChildren();
   renderChallengeBanner(config.challenge, config);
+  renderRoundBanner();
   setupGhost(config.challenge);
 
   const race = new Race({
@@ -1024,6 +1096,221 @@ function tickGhost(race) {
     delta.textContent = d === 0 ? 'level' : `${d > 0 ? '+' : '\u2212'}${Math.abs(d)} on their pace`;
   }
   delta.hidden = false;
+}
+
+/* ---------------------------------------------------------------- rounds */
+
+/**
+ * A round is five races and one card. The URL carries only the seed — the five
+ * holes deal from it, so sharing a round is sharing a link — and the card
+ * itself lives in storage, which is what lets a reload pick the round back up
+ * mid-way rather than starting it again.
+ *
+ * The hash does not change between holes. That is deliberate: it keeps the
+ * leave-confirmation asking about the round rather than firing four times on
+ * the way through it.
+ */
+function startRound(seed, opts) {
+  const card = round.open(seed, opts);
+  state.round = { card, index: round.nextHole(card) };
+  state.difficulty = card.difficulty;
+
+  if (state.round.index < 0) {
+    // Every hole played. Re-opening the link shows the card rather than
+    // silently dealing the same five again.
+    showRoundCard(card);
+    return;
+  }
+  playHole();
+}
+
+function playHole() {
+  const { card, index } = state.round;
+  const hole = round.holes(card)[index];
+  if (!hole) return goHome();
+  startRace({
+    start: hole.start,
+    target: hole.target,
+    mode: 'round',
+    hubBan: card.hubBan,
+    dailyNumber: null,
+    challenge: null
+  });
+}
+
+/** The banner and badge that say which hole this is and how the card looks. */
+function renderRoundBanner() {
+  const badge = $('#hud-hole');
+  const banner = $('#round-banner');
+  if (!state.round) {
+    badge.hidden = true;
+    banner.hidden = true;
+    return;
+  }
+  const { card, index } = state.round;
+  badge.textContent = `Hole ${index + 1}/${ROUND_HOLES}`;
+  badge.hidden = false;
+
+  const t = round.totals(card);
+  const bits = [`Round ${card.seed}`];
+  if (t.played) bits.push(`${t.clicks} click${t.clicks === 1 ? '' : 's'} so far`);
+  // Par only exists for the holes whose shortest route was actually proved,
+  // so the running total says nothing until one of them has been.
+  if (t.scored) bits.push(t.over === 0 ? 'level par' : `+${t.over}`);
+  banner.replaceChildren(
+    el('span', { class: 'cb-flag', text: '⛳' }),
+    el('span', {}, bits.join(' · '))
+  );
+  banner.hidden = false;
+}
+
+/** The card itself, on the result screen and on the round-complete screen. */
+function scorecardEl(card, { heading }) {
+  const pairs = round.holes(card);
+  const t = round.totals(card);
+
+  const rows = card.holes.map((hole, i) => {
+    // A played hole shows what was actually played. The pairs a seed deals can
+    // move if the pool grows, and a card must not rewrite its own history.
+    const pair = hole || pairs[i];
+    const played = Boolean(hole);
+    const label = hole
+      ? hole.won
+        ? `${hole.clicks} click${hole.clicks === 1 ? '' : 's'}`
+        : 'picked up'
+      : 'to play';
+    const score =
+      hole?.won && hole.over != null ? (hole.over === 0 ? 'par' : `+${hole.over}`) : null;
+
+    return el(
+      'li',
+      { class: `card-row${played ? '' : ' is-todo'}${hole && !hole.won ? ' is-lost' : ''}` },
+      el('span', { class: 'card-n', text: String(i + 1) }),
+      // A hole you have not reached yet keeps its matchup hidden: seeing what
+      // is coming is time to think about it that the clock is not charging for.
+      el('span', {
+        class: 'card-pair',
+        text: played ? `${pair.start} → ${pair.target}` : 'Not played yet'
+      }),
+      el('span', { class: 'card-par', text: hole?.par != null ? `par ${hole.par}` : '' }),
+      el('span', { class: 'card-clicks', text: label }),
+      score
+        ? el('span', {
+            class: `par-badge par-${Math.min(hole.over, 4)} card-score`,
+            text: score
+          })
+        : null
+    );
+  });
+
+  const summary = [
+    `${t.holed} of ${ROUND_HOLES} holed`,
+    `${t.clicks} click${t.clicks === 1 ? '' : 's'}`,
+    fmtTimeShort(t.ms)
+  ];
+  if (t.scored) {
+    // Par only covers holes that were holed out and whose shortest route was
+    // proved. Mid-round that is "so far"; at the end it is a smaller number of
+    // holes than the round had, and saying which is the honest version.
+    const tail =
+      t.scored === ROUND_HOLES ? '' : t.complete ? ` over ${t.scored} holes` : ' so far';
+    summary.push(`par ${t.par}${tail}, ${t.over === 0 ? 'level' : `+${t.over}`}`);
+  }
+
+  return el(
+    'div',
+    {},
+    el('h3', { class: 'sub', text: heading }),
+    el('ol', { class: 'card-rows' }, ...rows),
+    el('p', { class: 'muted small card-total', text: summary.join(' · ') })
+  );
+}
+
+function renderScorecard() {
+  const box = $('#result-scorecard');
+  if (!state.round) {
+    box.hidden = true;
+    return;
+  }
+  const { card } = state.round;
+  const done = round.nextHole(card) < 0;
+  box.replaceChildren(scorecardEl(card, { heading: done ? 'Round complete' : 'Scorecard' }));
+  box.hidden = false;
+
+  $('#single-actions').hidden = true;
+  $('#round-actions').hidden = false;
+  $('#btn-next-hole').textContent = done ? 'New round' : 'Next hole →';
+  $('#btn-round-quit').textContent = done ? 'Home' : 'Leave the round';
+}
+
+/** The card on its own, for re-opening a round that is already finished. */
+function showRoundCard(card) {
+  endRace();
+  showScreen('challenge');
+  $('#challenge-kicker').textContent = `Round ${card.seed}`;
+  $('#challenge-who').textContent = 'Round complete.';
+  $('#challenge-matchup').replaceChildren();
+  $('#challenge-stats').replaceChildren();
+  $('#challenge-scorecard').replaceChildren(scorecardEl(card, { heading: 'The card' }));
+  $('#challenge-scorecard').hidden = false;
+  $('#challenge-note').hidden = true;
+  $('#challenge-hubban').hidden = !card.hubBan;
+  $('#challenge-path').hidden = true;
+  $('#btn-accept').textContent = 'Play these five again';
+  $('#challenge-foot').textContent =
+    'The same five holes, in the same order, from the same seed. The card starts empty again.';
+  state.pendingChallenge = null;
+  state.roundCard = card;
+  $('#btn-accept').focus();
+}
+
+function roundUrl(card) {
+  return baseUrl() + roundHash({ seed: card.seed, difficulty: card.difficulty, hubBan: card.hubBan });
+}
+
+function wireRound() {
+  $('#btn-round').addEventListener('click', () => {
+    round.clear();
+    navigate(
+      roundHash({ seed: newRoundSeed(), difficulty: state.difficulty, hubBan: hubBanOn() })
+    );
+  });
+
+  $('#btn-round-resume').addEventListener('click', () => {
+    const card = round.load();
+    if (card) navigate(roundHash(card));
+  });
+
+  $('#btn-next-hole').addEventListener('click', () => {
+    const card = state.round?.card;
+    $('#modal-result').hidden = true;
+    if (!card) return goHome();
+    if (round.nextHole(card) < 0) {
+      round.clear();
+      navigate(roundHash({ seed: newRoundSeed(), difficulty: card.difficulty, hubBan: card.hubBan }));
+      return;
+    }
+    state.round.index = round.nextHole(card);
+    playHole();
+  });
+
+  $('#btn-copy-card').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const card = state.round?.card;
+    if (!card) return;
+    const text = scorecardBlock({
+      seed: card.seed,
+      holes: card.holes,
+      totals: round.totals(card),
+      url: roundUrl(card)
+    });
+    flash(btn, (await copyText(text)) ? 'Copied ✓' : 'Copy failed', 'Copy scorecard');
+  });
+
+  $('#btn-round-quit').addEventListener('click', () => {
+    $('#modal-result').hidden = true;
+    goHome();
+  });
 }
 
 function renderHud(race) {
@@ -1228,6 +1515,22 @@ function finishRace(result) {
   }
 
   renderSplits(result);
+
+  if (state.round) {
+    round.recordHole(state.round.card, state.round.index, {
+      start: result.start,
+      target: result.target,
+      difficulty: state.round.card.difficulty,
+      clicks: result.clicks,
+      ms: result.ms,
+      won: result.won
+    });
+    renderScorecard();
+  } else {
+    $('#result-scorecard').hidden = true;
+    $('#round-actions').hidden = true;
+    $('#single-actions').hidden = false;
+  }
 
   // Your own run has already gone into the seen pile via store.record().
   renderCrowd('#result-crowd', result.dailyNumber, result.won ? result.clicks : null, {
@@ -1465,6 +1768,10 @@ function scorePar(route, result) {
   if (par == null || over == null) return;
   state.par = { par, over };
   store.recordPar(par, over);
+  if (state.round) {
+    round.scoreHole(state.round.card, state.round.index, par, over);
+    renderScorecard();
+  }
   renderHome(); // the record card counts this race now
 }
 

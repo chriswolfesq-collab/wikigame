@@ -71,6 +71,22 @@
       <p class="muted small">“Two random articles” pulls straight from Wikipedia — it can be brutal, and occasionally impossible.</p>
     </section>
 
+    <section class="card" id="round-card">
+      <div class="card-head">
+        <h2>Round of five</h2>
+        <span class="pill" id="round-pill" hidden></span>
+      </div>
+      <p class="muted small">
+        Five races back to back, each scored against par. One card at the end —
+        and the link deals the same five to anyone you send it to.
+      </p>
+      <div class="card-foot">
+        <button class="btn btn-primary" id="btn-round">Start a round</button>
+        <button class="btn btn-ghost" id="btn-round-resume" hidden>Resume</button>
+        <p class="muted" id="round-status"></p>
+      </div>
+    </section>
+
     <section class="card card-mode">
       <label class="switch switch-mode">
         <input type="checkbox" id="opt-hubban">
@@ -156,6 +172,7 @@
       <h1 class="challenge-who" id="challenge-who"></h1>
       <div class="matchup" id="challenge-matchup"></div>
       <div class="result-stats" id="challenge-stats"></div>
+      <div class="scorecard" id="challenge-scorecard" hidden></div>
       <p class="muted small result-note" id="challenge-note" hidden></p>
       <p class="muted small result-note" id="challenge-hubban" hidden>
         Played in <strong>Expert Mode</strong>: the biggest articles on
@@ -171,7 +188,7 @@
         <button class="btn btn-primary btn-big" id="btn-accept">Race it</button>
         <button class="btn btn-ghost" id="btn-challenge-home">Not now</button>
       </div>
-      <p class="muted small">Same start, same target, same rules. Clock starts when the first article loads.</p>
+      <p class="muted small" id="challenge-foot">Same start, same target, same rules. Clock starts when the first article loads.</p>
     </div>
   </section>
 
@@ -183,6 +200,7 @@
         <div class="hud-target">
           <span class="hud-label">Target</span>
           <strong id="hud-target-title"></strong>
+          <span class="hud-mod hud-hole" id="hud-hole" hidden></span>
           <span class="hud-mod" id="hud-hubban" hidden
                 title="Expert Mode: the biggest articles on Wikipedia are closed on this board">Expert</span>
         </div>
@@ -219,6 +237,7 @@
       </div>
 
       <div class="challenge-banner" id="challenge-banner" hidden></div>
+      <div class="challenge-banner round-banner" id="round-banner" hidden></div>
 
       <div class="ghost-line" id="ghost-line" hidden
            title="Where your challenger was when their clock read what yours reads now.">
@@ -246,6 +265,7 @@
     <p class="crowd-line" id="result-crowd" hidden></p>
     <div class="result-challenge" id="result-challenge" hidden></div>
     <div class="result-path" id="result-path"></div>
+    <div class="scorecard" id="result-scorecard" hidden></div>
     <div class="result-best" id="result-best"></div>
     <label class="name-field" for="input-name">
       <span>Sign your challenge (optional)</span>
@@ -256,7 +276,12 @@
       <button class="btn" id="btn-copy-result">Copy result</button>
     </div>
     <p class="muted small" id="share-note"></p>
-    <div class="result-actions">
+    <div class="result-actions" id="round-actions" hidden>
+      <button class="btn btn-primary" id="btn-next-hole">Next hole →</button>
+      <button class="btn" id="btn-copy-card">Copy scorecard</button>
+      <button class="btn btn-ghost" id="btn-round-quit">Leave the round</button>
+    </div>
+    <div class="result-actions" id="single-actions">
       <button class="btn btn-ghost" id="btn-again">Play again</button>
       <button class="btn btn-ghost" id="btn-reverse" title="Same two articles, the other way round">Race it backwards</button>
       <button class="btn btn-ghost" id="btn-new">New race</button>

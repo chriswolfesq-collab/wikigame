@@ -7,6 +7,7 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  *   #/                          home
  *   #/race/Start/Target         open race
  *   #/race/Start/Target?hb=1     open race in Expert Mode
+ *   #/round/<seed>?d=hard&hb=1   a round of five, dealt from the seed
  *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&hb=1&by=Name&p=A|B|C&t=..&daily=7
  *                               a finished run — opens on the result, then races
  *
@@ -19,6 +20,15 @@ export function parseHash(hash = location.hash) {
   const [pathPart, queryPart] = raw.split('?');
   const segs = pathPart.split('/').filter(Boolean);
   const q = new URLSearchParams(queryPart || '');
+
+  if (segs[0] === 'round' && segs[1]) {
+    return {
+      route: 'round',
+      seed: segs[1],
+      difficulty: q.get('d') || 'any',
+      hubBan: q.get('hb') === '1'
+    };
+  }
 
   if (segs[0] === 'race' && segs[1] && segs[2]) {
     const challenge =
@@ -66,6 +76,16 @@ export function raceHash({ start, target, mode, dailyNumber, hubBan }) {
   if (hubBan) q.set('hb', '1');
   const qs = q.toString();
   return `#/race/${toUrlTitle(start)}/${toUrlTitle(target)}${qs ? '?' + qs : ''}`;
+}
+
+// A round travels as its seed. Five pairs in a URL would be five spoilers and
+// a link nothing would linkify.
+export function roundHash({ seed, difficulty, hubBan }) {
+  const q = new URLSearchParams();
+  if (difficulty && difficulty !== 'any') q.set('d', difficulty);
+  if (hubBan) q.set('hb', '1');
+  const qs = q.toString();
+  return `#/round/${encodeURIComponent(seed)}${qs ? '?' + qs : ''}`;
 }
 
 /**
@@ -211,6 +231,35 @@ export function shareBlock({
     : ['🏳️', `Gave up · ${fmtTimeShort(ms)}`];
 
   return [head, ...body, '', won ? `Beat me: ${url}` : `Your turn: ${url}`].join('\n');
+}
+
+/**
+ * The card you paste into a group chat.
+ *
+ * Like the single-race block it names no articles — five matchups is five times
+ * the spoiler — but a hole's par gives its line a scale without giving anything
+ * away, so a reader can see which one was the wall.
+ */
+export function scorecardBlock({ seed, holes, totals: t, url }) {
+  const lines = [`The Wikipedia Game — Round ${seed}`];
+  lines.push(`⛳ ${t.holed}/${holes.length} holed · ${t.clicks} clicks · ${fmtTimeShort(t.ms)}`);
+  if (t.scored) {
+    const tail = t.scored < holes.length ? ` (over ${t.scored} of ${holes.length})` : '';
+    lines.push(`Par ${t.par} · ${t.over === 0 ? 'level' : `+${t.over}`}${tail}`);
+  }
+  lines.push('');
+
+  holes.forEach((hole, i) => {
+    const n = String(i + 1);
+    if (!hole) return lines.push(`${n}  —`);
+    if (!hole.won) return lines.push(`${n}  🏳️ picked up`);
+    const par = hole.par != null ? `par ${hole.par}` : 'par ?';
+    const over = hole.over == null ? '' : hole.over === 0 ? '  par' : `  +${hole.over}`;
+    lines.push(`${n}  ${par}  ${hole.clicks} click${hole.clicks === 1 ? '' : 's'}${over}`);
+  });
+
+  lines.push('', `Same five: ${url}`);
+  return lines.join('\n');
 }
 
 export function pathText(path) {

@@ -16,6 +16,7 @@ back-button escape to Google.
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index — and a difficulty estimate before you commit. |
 | **Expert Mode** | A switch, not a race of its own: the thirty biggest articles on Wikipedia are closed, on quick races and your own pairs. It rides in the link, so a challenge is played on the board it was set on. |
+| **Round of five** | Five races back to back, each scored against par, one card at the end. The link deals the same five to whoever you send it to. |
 | **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat, and with your pace running alongside them as a ghost. |
 
 **Copy result** gives you a compact block for a group chat:
@@ -148,7 +149,8 @@ Pages, S3). There is nothing to configure.
 | `js/render.js` | Turns raw article HTML into a controlled board: chrome stripped, every link either armed as a legal move or defused. |
 | `js/game.js` | Race state machine — path, clock, win detection. Knows nothing about the DOM. |
 | `js/app.js` | Routing, home screen, race board, results. |
-| `js/puzzles.js` | The curated race pool and the daily schedule. |
+| `js/puzzles.js` | The curated race pool, the daily schedule, and the five holes a round seed deals. |
+| `js/round.js` | The scorecard for a round in progress. |
 | `js/hubs.js` | The Expert Mode list: thirty hub articles and every title that redirects to one. |
 | `js/share.js` | Challenge-link encoding and share text. |
 | `js/stats.js` | Player history in `localStorage`, plus the daily runs this browser has seen. |
@@ -156,6 +158,7 @@ Pages, S3). There is nothing to configure.
 | `js/config.js` | Deployment settings. One of them, and it ships empty. |
 
 Routes live in the hash, so the whole thing is one static page:
+`#/round/vqjkbw?d=hard`,
 `#/race/Apple/Pearl_Harbor?daily=1`, `#/race/Apple/Pearl_Harbor?hb=1` for a
 race in Expert Mode, or with a finished run attached,
 `#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&hb=1&p=<route>&t=<pace>`.
@@ -238,6 +241,53 @@ from there.
 graph stored against Daily #12 would be a different race wearing the same
 number — in your record, in your streak, and in the median. The daily card says
 so when the switch is on.
+
+### A round of five
+
+A single race is a score with nothing to compare it to. Five in a row is a
+session with a shape: one hole goes badly, and the rest of the round is about
+whether you can get it back.
+
+```
+Round complete
+1  Sandwich → John Montagu, 4th Earl of Sandwich   par 1   1 click    par
+2  Ballet → Russia                                          picked up
+3  Shoelaces → Big Bang                            par 2   4 clicks    +2
+4  Aspirin → Willow                                par 2   2 clicks   par
+5  Karaoke → Nikola Tesla                                   picked up
+
+3 of 5 holed · 7 clicks · 2:07 · par 5 over 3 holes, +2
+```
+
+**A round is a seed.** `#/round/vqjkbw` deals the same five, in the same order,
+to anyone who opens it, so a round is shared by sharing its link rather than by
+packing five pairs into a URL — which would be five spoilers and a link no chat
+client would leave intact. Unlike the daily schedule this is a plain shuffle, so
+appending to the pool changes which five a seed deals. Nothing is stored against
+a round's name the way a result is stored against a daily's number, so that
+costs nothing, and a card in progress keeps the pairs it was actually played on
+regardless.
+
+The card itself lives in `localStorage`, not in the URL, so a reload picks the
+round back up at the hole you were on and the home screen offers to resume it.
+There is only ever one card: a round is a sitting rather than something you
+keep, and a second slot would mostly be a way to lose track of both.
+
+The hash does not change between holes. That is deliberate — it keeps the
+leave-confirmation asking about the round rather than firing four times on the
+way through it. **Skip** is hidden for the same reason it is hidden on a daily:
+the five holes are what the seed dealt, and rerolling one would put you on a
+board nobody else opening that link would see.
+
+**A hole you give up on is "picked up".** It still shows what it cost you, but
+it is left out of the par total: golf does not score a hole that was never holed
+out, and inventing a penalty number would be pretending to a precision this does
+not have. The card says how many were holed instead, which reads as the
+admission it is — and the total says `over 3 holes` rather than quietly
+comparing a three-hole score with a five-hole one.
+
+A hole you have not reached yet stays blank on the card. Seeing what is coming
+is time to think about it that the clock is not charging you for.
 
 ### Par
 

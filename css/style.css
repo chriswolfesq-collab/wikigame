@@ -1168,3 +1168,49 @@ a { color: var(--link); }
 .par-badge.par-1 { color: var(--ink-2); }
 .par-badge.par-2, .par-badge.par-3 { color: var(--warn); border-color: var(--warn); }
 .par-badge.par-4 { color: var(--bad); border-color: var(--bad); }
+
+/* --------------------------------------------------------------- rounds -- */
+
+.round-banner { background: var(--surface-2); }
+
+/* The hole number sits beside the target like the Expert badge, but it is a
+   position in a round rather than a warning about the board. */
+.hud-mod.hud-hole { color: var(--ink-2); border-color: var(--line-2); }
+
+.scorecard { margin: 0 0 14px; }
+.card-rows {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.card-row {
+  display: grid;
+  /* number, matchup, par, clicks, score — five cells, and the score must not
+     be the one that wraps onto a line of its own. */
+  grid-template-columns: 1.3rem minmax(0, 1fr) auto auto auto;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: .9rem;
+}
+.card-n { color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.card-pair { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+.card-par { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.card-clicks { color: var(--ink-2); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.card-score { justify-self: end; }
+
+/* A hole you have not reached is deliberately blank — seeing what is coming
+   is time to think about it that the clock is not charging you for. */
+.card-row.is-todo .card-pair { color: var(--muted); font-style: italic; }
+.card-row.is-lost .card-clicks { color: var(--bad); }
+.card-total { margin: 0; }
+
+/* Narrow: the matchup takes the first line to itself and the three figures
+   line up underneath it. */
+@media (max-width: 520px) {
+  .card-row { grid-template-columns: 1.3rem minmax(0, 1fr) auto auto; }
+  .card-pair { grid-column: 2 / -1; }
+  .card-par { grid-column: 2; }
+}
