@@ -1094,7 +1094,7 @@ a { color: var(--link); }
 .splits-note { margin: 0 0 4px; }
 #result-path .splits-note:last-child { margin-bottom: 14px; }
 
-/* ------------------------------------------------------------ No Highways -- */
+/* ------------------------------------------------------------ Expert Mode -- */
 
 /* A closed link is struck through rather than removed. Knowing the road you
    wanted is shut is part of the game this mode is asking you to play, and a
@@ -1139,4 +1139,78 @@ a { color: var(--link); }
   letter-spacing: .04em;
   color: var(--bad);
   cursor: help;
+}
+
+/* ------------------------------------------------------------------ par -- */
+
+/* The route panel leads with what the race was worth, so the heading and the
+   verdict share a line. */
+.best-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 6px;
+}
+.best-head .sub { margin: 0; }
+
+/* Par cannot be beaten — it is the shortest route that exists — so matching
+   it is the perfect game and gets the only colour on the ladder. */
+.par-badge {
+  flex: 0 0 auto;
+  padding: 1px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.par-badge.par-0 { color: var(--good); border-color: var(--good); }
+.par-badge.par-1 { color: var(--ink-2); }
+.par-badge.par-2, .par-badge.par-3 { color: var(--warn); border-color: var(--warn); }
+.par-badge.par-4 { color: var(--bad); border-color: var(--bad); }
+
+/* --------------------------------------------------------------- rounds -- */
+
+.round-banner { background: var(--surface-2); }
+
+/* The hole number sits beside the target like the Expert badge, but it is a
+   position in a round rather than a warning about the board. */
+.hud-mod.hud-hole { color: var(--ink-2); border-color: var(--line-2); }
+
+.scorecard { margin: 0 0 14px; }
+.card-rows {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.card-row {
+  display: grid;
+  /* number, matchup, par, clicks, score — five cells, and the score must not
+     be the one that wraps onto a line of its own. */
+  grid-template-columns: 1.3rem minmax(0, 1fr) auto auto auto;
+  align-items: baseline;
+  gap: 2px 8px;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--line);
+  font-size: .9rem;
+}
+.card-n { color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
+.card-pair { min-width: 0; overflow-wrap: anywhere; color: var(--ink); }
+.card-par { color: var(--muted); font-size: .8rem; font-variant-numeric: tabular-nums; }
+.card-clicks { color: var(--ink-2); font-size: .85rem; font-variant-numeric: tabular-nums; }
+.card-score { justify-self: end; }
+
+/* A hole you have not reached is deliberately blank — seeing what is coming
+   is time to think about it that the clock is not charging you for. */
+.card-row.is-todo .card-pair { color: var(--muted); font-style: italic; }
+.card-row.is-lost .card-clicks { color: var(--bad); }
+.card-total { margin: 0; }
+
+/* Narrow: the matchup takes the first line to itself and the three figures
+   line up underneath it. */
+@media (max-width: 520px) {
+  .card-row { grid-template-columns: 1.3rem minmax(0, 1fr) auto auto; }
+  .card-pair { grid-column: 2 / -1; }
+  .card-par { grid-column: 2; }
 }

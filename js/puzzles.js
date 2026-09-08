@@ -357,6 +357,47 @@ export function randomPuzzle(difficulty = 'any', exclude = null) {
   return { ...pick, mode: 'random' };
 }
 
+/* ------------------------------------------------------------------ rounds */
+
+// Five holes is a session: long enough to have a shape, short enough to finish
+// in a sitting. Golf's nine and eighteen are both a lot of Wikipedia.
+export const ROUND_HOLES = 5;
+
+/** A short, typeable, shareable name for a round. */
+export function newRoundSeed() {
+  return Math.floor(Math.random() * 0xffffffff).toString(36);
+}
+
+function seedNumber(seed) {
+  let h = 0x811c9dc5;
+  for (const ch of String(seed)) {
+    h ^= ch.charCodeAt(0);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
+ * The five holes a seed deals. Deterministic, so a round is shared by sharing
+ * its link rather than by shipping five pairs in a URL.
+ *
+ * Unlike the daily schedule this is a plain shuffle of the whole tier, so
+ * appending to the pool changes which five any given seed deals. A round is a
+ * thing you play now and compare now — nothing is stored against its number
+ * the way a daily's result is against its day — so that costs nothing, and an
+ * in-progress card keeps its own pairs regardless.
+ */
+export function roundPuzzles(seed, difficulty = 'any') {
+  const matches = PUZZLES.filter((p) => difficulty === 'any' || p.difficulty === difficulty);
+  const deck = matches.slice();
+  const rand = mulberry32(seedNumber(seed));
+  for (let i = deck.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(rand() * (i + 1));
+    [deck[i], deck[j]] = [deck[j], deck[i]];
+  }
+  return deck.slice(0, ROUND_HOLES).map((p) => ({ ...p, mode: 'round' }));
+}
+
 export function msUntilNextDaily(now = new Date()) {
   const next = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
   return next - now;

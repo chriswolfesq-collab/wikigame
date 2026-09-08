@@ -20,7 +20,7 @@
 // first, so it is genuinely the shortest. Absence is only ever reported for a
 // depth whose sweep actually ran to the end — `ruledOut` says which.
 //
-// With No Highways on, every sweep runs against a smaller graph: a hop through
+// In Expert Mode, every sweep runs against a smaller graph: a hop through
 // a closed article is not a route the player could have taken, so it is not one
 // this offers them.
 
@@ -60,11 +60,11 @@ const CACHE_MAX = 200;
  * @param {string} start canonical title
  * @param {string} target canonical title
  * @param {{signal?:AbortSignal, closed?:Map<string,string>|null}} opts
- *        `closed` is a No Highways board: a route may not pass through one of
+ *        `closed` is an Expert Mode board: a route may not pass through one of
  *        those, so neither may the route this offers as the best anyone could
  *        have done.
  * @returns {Promise<
- *   {hops:number, path:string[]} |
+ *   {hops:number, path:string[], certain:boolean} |
  *   {hops:null, ruledOut:number, examined:number, deepExamined:number} |
  *   {error:string}
  * >}
@@ -72,6 +72,10 @@ const CACHE_MAX = 200;
  * `ruledOut` is the longest route length actually proved impossible: 3 when
  * both sweeps ran to the end, 2 when only the shallow one did, 0 when even
  * that was cut short and nothing at all was settled.
+ *
+ * `certain` says whether every shorter length was ruled out before this one
+ * was found — that is, whether the route is the shortest or merely the
+ * shortest *seen*. It is what par is allowed to be built on.
  */
 export async function findShortestRoute(start, target, { signal, closed = null } = {}) {
   const cached = readCache(start, target, closed);
@@ -97,7 +101,7 @@ async function search(start, target, signal, closed) {
   // Hop one is settled on its own rather than read off the sweep: the sweep
   // stops at its first hit, and a two-hop hit on the first page of results
   // would otherwise mask a direct link sitting on the third.
-  if (await linksToAny(start, aliases)) return { hops: 1, path: [start, target] };
+  if (await linksToAny(start, aliases)) return { hops: 1, path: [start, target], certain: true };
   if (signal?.aborted) return { error: 'cancelled' };
 
   const startKey = titleKey(start);
@@ -128,7 +132,8 @@ async function search(start, target, signal, closed) {
         titleKey(page.title) !== startKey &&
         !closed?.has(titleKey(page.title))
       ) {
-        return { hops: 2, path: [start, page.title, target] };
+        // Nothing shorter than two exists: hop one was settled outright.
+        return { hops: 2, path: [start, page.title, target], certain: true };
       }
     }
 
@@ -149,7 +154,12 @@ async function search(start, target, signal, closed) {
     // possible, so nothing below can be ruled out either.
     shallowComplete: complete
   });
-  if (deep.route) return { hops: 3, path: deep.route };
+  // A three-hop route is only the *shortest* if the two-hop sweep that ran
+  // before it saw every candidate. Cut that sweep short and a two-hop route
+  // may be sitting in the part it never read, which makes this the shortest
+  // route found rather than the shortest there is — and par cannot be built
+  // on a maybe.
+  if (deep.route) return { hops: 3, path: deep.route, certain: complete };
   if (deep.error) return { error: deep.error };
 
   return {

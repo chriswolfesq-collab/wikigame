@@ -14,6 +14,10 @@ const BLANK = {
   bestMs: null,
   dailyStreak: 0,
   bestStreak: 0,
+  // Par is only known for races whose shortest route was actually proved, so
+  // it is counted over its own denominator rather than over every race.
+  parRaces: 0,
+  parStrokes: 0,
   lastDailyNumber: null,
   playerName: '',
   dailyResults: {}, // dailyNumber -> { ms, clicks, won }
@@ -164,11 +168,31 @@ export function record(result) {
     // score only means something next to the setting it was made under.
     navboxes: result.navboxes !== false,
     // Recorded so replaying a race from the history replays the board it was
-    // set on, and so a No Highways run never reads as an ordinary one.
+    // set on, and so an Expert Mode run never reads as an ordinary one.
     hubBan: result.hubBan === true,
     path: result.path.slice(0, 30)
   });
   s.history = s.history.slice(0, 50);
+  save();
+  return s;
+}
+
+/**
+ * Fill in the par for the run that just finished.
+ *
+ * The route search lands seconds after the result is stored — it is deliberately
+ * not blocking — so this comes back to the entry it belongs to. That is always
+ * the newest one: starting another race abandons the search that would have
+ * called this.
+ */
+export function recordPar(par, over) {
+  const s = load();
+  const latest = s.history[0];
+  if (!latest || latest.par != null) return s; // already scored, or nothing to score
+  latest.par = par;
+  latest.overPar = over;
+  s.parRaces += 1;
+  s.parStrokes += over;
   save();
   return s;
 }
@@ -234,6 +258,11 @@ export function summary() {
     avgMs: s.won ? s.totalMs / s.won : null,
     bestClicks: s.bestClicks,
     bestMs: s.bestMs,
+    parRaces: s.parRaces || 0,
+    // Clicks measured against what the race was actually worth. A five on a
+    // par five is a better run than a four on a par two, and this is the only
+    // number here that knows the difference.
+    avgOverPar: s.parRaces ? s.parStrokes / s.parRaces : null,
     streak: s.dailyStreak,
     bestStreak: s.bestStreak,
     // The caller needs this to tell a live streak from one already broken:

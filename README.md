@@ -15,7 +15,8 @@ back-button escape to Google.
 | **Quick race** | Random pull from a curated pool of 209 races, filterable by difficulty. It remembers what it has dealt you, so races do not come round again until you have worked through the pool. |
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index — and a difficulty estimate before you commit. |
-| **No Highways** | A switch, not a race of its own: the thirty biggest articles on Wikipedia are closed, on quick races and your own pairs. It rides in the link, so a challenge is played on the board it was set on. |
+| **Expert Mode** | A switch, not a race of its own: the thirty biggest articles on Wikipedia are closed, on quick races and your own pairs. It rides in the link, so a challenge is played on the board it was set on. |
+| **Round of five** | Five races back to back, each scored against par, one card at the end. The link deals the same five to whoever you send it to. |
 | **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat, and with your pace running alongside them as a ghost. |
 
 **Copy result** gives you a compact block for a group chat:
@@ -55,10 +56,12 @@ carries the board for anyone who wants to play it.
 - The HUD shows **clicks · seen** — the route you are on, and how many articles
   you have opened in all. They are the same number until you double back.
 - **Peek** shows the target's summary and adds 15 seconds to your final time.
-- With **No Highways** on, a hub article is struck through and cannot be
+- In **Expert Mode**, a hub article is struck through and cannot be
   clicked. Reaching for one costs nothing — it is simply not a road.
 - Racing a challenge puts a **ghost** in the HUD: where the challenger was when
   their clock read what yours reads now. It can be switched off in settings.
+- Every finished race is scored against **par** — the shortest route that
+  exists. Matching it is the perfect game; you cannot do better than it.
 - Every result screen breaks the run into **splits** — what each hop cost, and
   which one cost the most.
 - **Contents** jumps to any section; **Find** filters the page down to the links
@@ -146,16 +149,18 @@ Pages, S3). There is nothing to configure.
 | `js/render.js` | Turns raw article HTML into a controlled board: chrome stripped, every link either armed as a legal move or defused. |
 | `js/game.js` | Race state machine — path, clock, win detection. Knows nothing about the DOM. |
 | `js/app.js` | Routing, home screen, race board, results. |
-| `js/puzzles.js` | The curated race pool and the daily schedule. |
-| `js/hubs.js` | The No Highways list: thirty hub articles and every title that redirects to one. |
+| `js/puzzles.js` | The curated race pool, the daily schedule, and the five holes a round seed deals. |
+| `js/round.js` | The scorecard for a round in progress. |
+| `js/hubs.js` | The Expert Mode list: thirty hub articles and every title that redirects to one. |
 | `js/share.js` | Challenge-link encoding and share text. |
 | `js/stats.js` | Player history in `localStorage`, plus the daily runs this browser has seen. |
 | `js/scoreboard.js` | The optional shared scoreboard. Inert unless configured. |
 | `js/config.js` | Deployment settings. One of them, and it ships empty. |
 
 Routes live in the hash, so the whole thing is one static page:
+`#/round/vqjkbw?d=hard`,
 `#/race/Apple/Pearl_Harbor?daily=1`, `#/race/Apple/Pearl_Harbor?hb=1` for a
-race with the highways closed, or with a finished run attached,
+race in Expert Mode, or with a finished run attached,
 `#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&hb=1&p=<route>&t=<pace>`.
 
 `mode` carries how the race was chosen — `daily`, `random` (curated pool),
@@ -175,7 +180,7 @@ degrades to no route rather than breaking the link, and a `t` whose length does
 not line up with the route it arrived with is dropped rather than pinned to the
 wrong hops.
 
-### No Highways
+### Expert Mode
 
 Every long race on Wikipedia has the same optimal shape: climb to an article
 that links to everything, then descend. United States, World War II, London,
@@ -183,7 +188,7 @@ Latin — reach one of those and the rest of the board opens up, whatever the tw
 articles were. It is a real strategy, it works from almost anywhere, and it is
 the same strategy every time.
 
-Switch No Highways on and the thirty of them in `js/hubs.js` are closed. They
+Switch Expert Mode on and the thirty of them in `js/hubs.js` are closed. They
 are struck through on the page rather than deleted: knowing that the road you
 wanted is shut is part of the game this mode is asking you to play, and a
 silently missing link would just read as a broken board. The tally at the top
@@ -236,6 +241,95 @@ from there.
 graph stored against Daily #12 would be a different race wearing the same
 number — in your record, in your streak, and in the median. The daily card says
 so when the switch is on.
+
+### A round of five
+
+A single race is a score with nothing to compare it to. Five in a row is a
+session with a shape: one hole goes badly, and the rest of the round is about
+whether you can get it back.
+
+```
+Round complete
+1  Sandwich → John Montagu, 4th Earl of Sandwich   par 1   1 click    par
+2  Ballet → Russia                                          picked up
+3  Shoelaces → Big Bang                            par 2   4 clicks    +2
+4  Aspirin → Willow                                par 2   2 clicks   par
+5  Karaoke → Nikola Tesla                                   picked up
+
+3 of 5 holed · 7 clicks · 2:07 · par 5 over 3 holes, +2
+```
+
+**A round is a seed.** `#/round/vqjkbw` deals the same five, in the same order,
+to anyone who opens it, so a round is shared by sharing its link rather than by
+packing five pairs into a URL — which would be five spoilers and a link no chat
+client would leave intact. Unlike the daily schedule this is a plain shuffle, so
+appending to the pool changes which five a seed deals. Nothing is stored against
+a round's name the way a result is stored against a daily's number, so that
+costs nothing, and a card in progress keeps the pairs it was actually played on
+regardless.
+
+The card itself lives in `localStorage`, not in the URL, so a reload picks the
+round back up at the hole you were on and the home screen offers to resume it.
+There is only ever one card: a round is a sitting rather than something you
+keep, and a second slot would mostly be a way to lose track of both.
+
+The hash does not change between holes. That is deliberate — it keeps the
+leave-confirmation asking about the round rather than firing four times on the
+way through it. **Skip** is hidden for the same reason it is hidden on a daily:
+the five holes are what the seed dealt, and rerolling one would put you on a
+board nobody else opening that link would see.
+
+**A hole you give up on is "picked up".** It still shows what it cost you, but
+it is left out of the par total: golf does not score a hole that was never holed
+out, and inventing a penalty number would be pretending to a precision this does
+not have. The card says how many were holed instead, which reads as the
+admission it is — and the total says `over 3 holes` rather than quietly
+comparing a three-hole score with a five-hole one.
+
+A hole you have not reached yet stays blank on the card. Seeing what is coming
+is time to think about it that the clock is not charging you for.
+
+### Par
+
+Clicks alone do not say much. A four on a pair that is four hops apart is a
+perfect run; a four on a pair that is two hops apart is a scramble. Par settles
+which one you just had:
+
+```
+Par 1                                          Double bogey
+Apple → Fruit
+1 click was the best possible. You took 3.
+```
+
+Par is the shortest route, so it **cannot be beaten** — the ladder runs one way
+and only its first rungs are worth a name: par, bogey, double bogey, triple
+bogey, then plain `+4`. Matching par is the win inside the win.
+
+It costs nothing to compute, because the shortest-route search was already
+running on that screen. It lands a second or two after the result does, which is
+why the record fills in afterwards rather than at the moment you finish.
+
+**Only a route proved shortest can be par.** The three-hop sweep can return a
+route it found after a shallower sweep was cut short — the shortest *seen*, not
+the shortest there is — and a score against a maybe is not a score. The search
+reports `certain` for exactly this, and when it is false the panel keeps its old
+heading and says so: *"the shortest route found. Shorter ones were not ruled
+out, so this is not a par."*
+
+A run that beats the route outright means the search missed it, which is rare
+and worth saying plainly rather than dressing up as a negative handicap.
+
+**Over par** is the one number in the record that knows what a race was worth.
+It counts only the races that were actually scored, so it has its own
+denominator — *"+1.4, 23 scored"* — and past runs from before par existed are
+simply not in it. Each history row carries its own, and the share text picks it
+up when the search proved it before you copied:
+
+```
+The Wikipedia Game — Daily #3
+🔗🔗🔗🔗
+4 clicks · 0:24 · par 3 +1
+```
 
 ### Splits
 
@@ -316,7 +410,7 @@ request — the trick hop two already used, one level deeper. A three-hop answer
 costs a couple of dozen requests, paced a quarter of a second apart to stay
 inside what the anonymous API will take.
 
-That matters most for the races that need it. Hard pairs and No Highways both
+That matters most for the races that need it. Hard pairs and Expert Mode both
 push real routes out past two hops, which is exactly where the old search went
 quiet.
 
@@ -336,8 +430,8 @@ the end — `ruledOut` in the result says which:
 Depth is also the optional half of the search: if it is throttled or the
 connection drops, the deep sweep is abandoned and the shallow answer — which is
 proved — is reported on its own rather than the whole thing failing. Answers are
-cached in `localStorage`, keyed by the pair and by whether the highways were
-closed.
+cached in `localStorage`, keyed by the pair and by whether the big articles
+were closed.
 
 Routes are computed over Wikipedia's own link table, which includes links from
 navigation boxes. With navboxes switched off in settings, a suggested route may
@@ -412,7 +506,7 @@ race in progress needs them more, so a pending one is cancelled the moment a
 race starts. Now that the search reaches three hops it can tell a wall from a
 hunt — *"nothing inside three clicks"* is a different warning from *"nothing
 inside two"* — and it sizes the pair up against the board it will be played on,
-so turning No Highways on changes the estimate.
+so turning Expert Mode on changes the estimate.
 
 ### The daily schedule
 

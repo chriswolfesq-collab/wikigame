@@ -6,7 +6,8 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  * Routes:
  *   #/                          home
  *   #/race/Start/Target         open race
- *   #/race/Start/Target?hb=1     open race with No Highways
+ *   #/race/Start/Target?hb=1     open race in Expert Mode
+ *   #/round/<seed>?d=hard&hb=1   a round of five, dealt from the seed
  *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&hb=1&by=Name&p=A|B|C&t=..&daily=7
  *                               a finished run — opens on the result, then races
  *
@@ -19,6 +20,15 @@ export function parseHash(hash = location.hash) {
   const [pathPart, queryPart] = raw.split('?');
   const segs = pathPart.split('/').filter(Boolean);
   const q = new URLSearchParams(queryPart || '');
+
+  if (segs[0] === 'round' && segs[1]) {
+    return {
+      route: 'round',
+      seed: segs[1],
+      difficulty: q.get('d') || 'any',
+      hubBan: q.get('hb') === '1'
+    };
+  }
 
   if (segs[0] === 'race' && segs[1] && segs[2]) {
     const challenge =
@@ -49,7 +59,7 @@ export function parseHash(hash = location.hash) {
       target: fromUrlTitle(segs[2]),
       dailyNumber: q.has('daily') ? Number(q.get('daily')) : null,
       // Unlike `nb`, this is a property of the race rather than of whoever
-      // wrote the link: absent has always meant the highways are open, and a
+      // wrote the link: absent has always meant the big articles are open, and a
       // link that does not carry it is an ordinary race for everyone.
       hubBan: q.get('hb') === '1',
       mode: q.get('mode') || (q.has('daily') ? 'daily' : challenge ? 'challenge' : 'custom'),
@@ -66,6 +76,16 @@ export function raceHash({ start, target, mode, dailyNumber, hubBan }) {
   if (hubBan) q.set('hb', '1');
   const qs = q.toString();
   return `#/race/${toUrlTitle(start)}/${toUrlTitle(target)}${qs ? '?' + qs : ''}`;
+}
+
+// A round travels as its seed. Five pairs in a URL would be five spoilers and
+// a link nothing would linkify.
+export function roundHash({ seed, difficulty, hubBan }) {
+  const q = new URLSearchParams();
+  if (difficulty && difficulty !== 'any') q.set('d', difficulty);
+  if (hubBan) q.set('hb', '1');
+  const qs = q.toString();
+  return `#/round/${encodeURIComponent(seed)}${qs ? '?' + qs : ''}`;
 }
 
 /**
@@ -182,20 +202,64 @@ function chain(clicks) {
  * spoil — the old share text put it in the second line. The link still carries
  * the board for anyone who wants to play it.
  */
-export function shareBlock({ ms, clicks, won, dailyNumber, hints, backs, navboxes, hubBan, url }) {
+export function shareBlock({
+  ms,
+  clicks,
+  won,
+  dailyNumber,
+  hints,
+  backs,
+  navboxes,
+  hubBan,
+  par,
+  over,
+  url
+}) {
   const head = dailyNumber ? `The Wikipedia Game — Daily #${dailyNumber}` : 'The Wikipedia Game';
 
   const score = [`${clicks} click${clicks === 1 ? '' : 's'}`, fmtTimeShort(ms)];
+  // What the race was worth, so a four means something to whoever reads it.
+  // It rides along only when the search actually proved it before you shared.
+  if (par != null && over != null) score.push(over === 0 ? `par ${par}` : `par ${par} +${over}`);
   if (hints) score.push(`👁 ${hints}`);
   if (backs) score.push(`↩ ${backs}`);
   if (navboxes === false) score.push('no navboxes');
-  if (hubBan) score.push('no highways');
+  if (hubBan) score.push('expert');
 
   const body = won
     ? [chain(clicks), score.join(' · ')]
     : ['🏳️', `Gave up · ${fmtTimeShort(ms)}`];
 
   return [head, ...body, '', won ? `Beat me: ${url}` : `Your turn: ${url}`].join('\n');
+}
+
+/**
+ * The card you paste into a group chat.
+ *
+ * Like the single-race block it names no articles — five matchups is five times
+ * the spoiler — but a hole's par gives its line a scale without giving anything
+ * away, so a reader can see which one was the wall.
+ */
+export function scorecardBlock({ seed, holes, totals: t, url }) {
+  const lines = [`The Wikipedia Game — Round ${seed}`];
+  lines.push(`⛳ ${t.holed}/${holes.length} holed · ${t.clicks} clicks · ${fmtTimeShort(t.ms)}`);
+  if (t.scored) {
+    const tail = t.scored < holes.length ? ` (over ${t.scored} of ${holes.length})` : '';
+    lines.push(`Par ${t.par} · ${t.over === 0 ? 'level' : `+${t.over}`}${tail}`);
+  }
+  lines.push('');
+
+  holes.forEach((hole, i) => {
+    const n = String(i + 1);
+    if (!hole) return lines.push(`${n}  —`);
+    if (!hole.won) return lines.push(`${n}  🏳️ picked up`);
+    const par = hole.par != null ? `par ${hole.par}` : 'par ?';
+    const over = hole.over == null ? '' : hole.over === 0 ? '  par' : `  +${hole.over}`;
+    lines.push(`${n}  ${par}  ${hole.clicks} click${hole.clicks === 1 ? '' : 's'}${over}`);
+  });
+
+  lines.push('', `Same five: ${url}`);
+  return lines.join('\n');
 }
 
 export function pathText(path) {
