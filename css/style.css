@@ -1140,3 +1140,31 @@ a { color: var(--link); }
   color: var(--bad);
   cursor: help;
 }
+
+/* ------------------------------------------------------------------ par -- */
+
+/* The route panel leads with what the race was worth, so the heading and the
+   verdict share a line. */
+.best-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 6px;
+}
+.best-head .sub { margin: 0; }
+
+/* Par cannot be beaten — it is the shortest route that exists — so matching
+   it is the perfect game and gets the only colour on the ladder. */
+.par-badge {
+  flex: 0 0 auto;
+  padding: 1px 9px;
+  border: 1px solid var(--line-2);
+  border-radius: 999px;
+  font-size: .74rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--ink-2);
+  white-space: nowrap;
+}
+.par-badge.par-0 { color: var(--good); border-color: var(--good); }
+.par-badge.par-1 { color: var(--ink-2); }
+.par-badge.par-2, .par-badge.par-3 { color: var(--warn); border-color: var(--warn); }
+.par-badge.par-4 { color: var(--bad); border-color: var(--bad); }

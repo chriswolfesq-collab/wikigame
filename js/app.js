@@ -22,6 +22,7 @@ const state = {
   historyExpanded: false,
   timer: null,
   routeSearch: null,
+  par: null,
   estimate: null,
   estimatePair: null
 };
@@ -387,6 +388,13 @@ function renderStats(summary, streak) {
     ['Win rate', s.played ? `${s.winRate}%` : '—'],
     ['Best clicks', s.bestClicks ?? '—'],
     ['Best time', s.bestMs != null ? fmtTimeShort(s.bestMs) : '—'],
+    // Clicks against what the race was worth. A five on a par five beats a
+    // four on a par two, and this is the only cell here that knows that.
+    [
+      'Over par',
+      s.avgOverPar != null ? `+${s.avgOverPar.toFixed(1)}` : '—',
+      s.parRaces ? `${s.parRaces} scored` : null
+    ],
     // bestStreak was stored from the start and never shown; a streak you are
     // no longer on is exactly the number that makes the current one mean something.
     ['Daily streak', live, s.bestStreak > live ? `best ${s.bestStreak}` : null]
@@ -429,7 +437,14 @@ function renderStats(summary, streak) {
           h.hubBan
             ? el('span', { class: 'h-mod', title: 'Played with No Highways', text: 'NH' })
             : null,
-          el('span', { class: 'h-score', text: h.won ? `${h.clicks} · ${fmtTimeShort(h.ms)}` : '—' }),
+          el('span', {
+            class: 'h-score',
+            // "+0" is not how anyone writes a par.
+            text: h.won
+              ? `${h.clicks} · ${fmtTimeShort(h.ms)}` +
+                (h.overPar != null ? ` · ${h.overPar === 0 ? 'par' : `+${h.overPar}`}` : '')
+              : '—'
+          }),
           // The row used to be one unlabelled button: the race name was the
           // control, and nothing said so until you hovered or tabbed onto it.
           el(
@@ -886,6 +901,7 @@ function endRace() {
   state.timer = null;
   state.routeSearch?.abort();
   state.routeSearch = null;
+  state.par = null;
   state.ghost = null;
   $('#ghost-line').hidden = true;
   finder.reset();
@@ -1395,9 +1411,8 @@ function revealShortestRoute(result) {
   const controller = new AbortController();
   state.routeSearch = controller;
 
-  const heading = () => el('h3', { class: 'sub', text: 'Shortest route' });
   box.replaceChildren(
-    heading(),
+    bestHead('Shortest route'),
     el('p', { class: 'muted best-working' }, el('span', { class: 'spinner' }), 'Working it out…')
   );
 
@@ -1407,26 +1422,73 @@ function revealShortestRoute(result) {
     closed: result.hubBan ? closedFor(result.start, result.target) : null
   }).then((route) => {
     if (controller.signal.aborted) return;
-    box.replaceChildren(heading(), ...bestRouteBody(route, result));
+    box.replaceChildren(...bestRouteBody(route, result));
+    scorePar(route, result);
   });
 }
 
+/* -------------------------------------------------------------------- par */
+
+/**
+ * Par is the shortest route that exists, so it cannot be beaten — matching it
+ * is the perfect game and everything else is over. The ladder runs one way,
+ * which is why only its first few rungs are worth a name.
+ */
+const PAR_NAMES = ['Par', 'Bogey', 'Double bogey', 'Triple bogey'];
+
+function parName(over) {
+  return PAR_NAMES[over] || `+${over}`;
+}
+
+function bestHead(text, badge) {
+  return el('div', { class: 'best-head' }, el('h3', { class: 'sub', text }), badge || null);
+}
+
+/**
+ * What a route is allowed to be scored as.
+ *
+ * Only a route proved shortest can be par: one found after a sweep that was
+ * cut short is the shortest *seen*, and a score against a maybe is not a
+ * score. A run that beat the route outright means the search missed it —
+ * rare, and worth saying rather than dressing up as a negative handicap.
+ */
+function parFor(route, result) {
+  if (!route.hops || !route.certain) return { par: null, over: null };
+  const par = route.hops;
+  if (!result.won) return { par, over: null };
+  const over = result.clicks - par;
+  return { par, over: over >= 0 ? over : null, beat: over < 0 };
+}
+
+function scorePar(route, result) {
+  const { par, over } = parFor(route, result);
+  if (par == null || over == null) return;
+  state.par = { par, over };
+  store.recordPar(par, over);
+  renderHome(); // the record card counts this race now
+}
+
 function bestRouteBody(route, result) {
-  if (route.error) return [el('p', { class: 'muted', text: 'Could not work that out just now.' })];
+  if (route.error) {
+    return [
+      bestHead('Shortest route'),
+      el('p', { class: 'muted', text: 'Could not work that out just now.' })
+    ];
+  }
 
   if (route.hops) {
+    const { par, over, beat } = parFor(route, result);
     const n = `${route.hops} click${route.hops === 1 ? '' : 's'}`;
+
     return [
+      bestHead(
+        par != null ? `Par ${par}` : 'Shortest route',
+        over != null
+          ? el('span', { class: `par-badge par-${Math.min(over, 4)}`, text: parName(over) })
+          : null
+      ),
       pathChainEl(route.path, 'best-chain'),
-      el('p', {
-        class: 'muted small',
-        text:
-          result.won && result.clicks === route.hops
-            ? `${n} — and that is exactly what you took.`
-            : result.won
-              ? `${n}. You took ${result.clicks}.`
-              : `${n}. It was closer than it looked.`
-      })
+      el('p', { class: 'muted small', text: parNote(route, result, { par, over, beat, n }) })
     ];
   }
 
@@ -1461,9 +1523,25 @@ function bestRouteBody(route, result) {
             ];
 
   return [
+    bestHead('Shortest route'),
     el('p', { class: 'best-none', text: headline }),
     el('p', { class: 'muted small', text: detail })
   ];
+}
+
+function parNote(route, result, { par, over, beat, n }) {
+  // The search reached this route without ruling out a shorter one, so it is
+  // the best found rather than the best there is — and saying so is the whole
+  // difference between a par and a guess.
+  if (par == null) {
+    return `The shortest route found. Shorter ones were not ruled out, so this is not a par.`;
+  }
+  if (beat) {
+    return `You got there in ${result.clicks}. That is shorter than anything the search proved — it missed your route.`;
+  }
+  if (!result.won) return `${n} was the best possible. It was closer than it looked.`;
+  if (over === 0) return `${n} was the best possible, and that is exactly what you took.`;
+  return `${n} was the best possible. You took ${result.clicks}.`;
 }
 
 /* ----------------------------------------------------------- the crowd */
@@ -1553,7 +1631,7 @@ function wireModals() {
     const r = state.race?.result();
     if (!r) return;
     const url = r.won ? challengeUrl({ ...r, by: playerName() }) : raceUrl({ ...r, mode: 'custom' });
-    const text = shareBlock({ ...r, url });
+    const text = shareBlock({ ...r, ...(state.par || {}), url });
     flash(btn, (await copyText(text)) ? 'Copied ✓' : 'Copy failed', 'Copy result');
   });
 

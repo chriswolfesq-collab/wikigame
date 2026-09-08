@@ -182,10 +182,25 @@ function chain(clicks) {
  * spoil — the old share text put it in the second line. The link still carries
  * the board for anyone who wants to play it.
  */
-export function shareBlock({ ms, clicks, won, dailyNumber, hints, backs, navboxes, hubBan, url }) {
+export function shareBlock({
+  ms,
+  clicks,
+  won,
+  dailyNumber,
+  hints,
+  backs,
+  navboxes,
+  hubBan,
+  par,
+  over,
+  url
+}) {
   const head = dailyNumber ? `The Wikipedia Game — Daily #${dailyNumber}` : 'The Wikipedia Game';
 
   const score = [`${clicks} click${clicks === 1 ? '' : 's'}`, fmtTimeShort(ms)];
+  // What the race was worth, so a four means something to whoever reads it.
+  // It rides along only when the search actually proved it before you shared.
+  if (par != null && over != null) score.push(over === 0 ? `par ${par}` : `par ${par} +${over}`);
   if (hints) score.push(`👁 ${hints}`);
   if (backs) score.push(`↩ ${backs}`);
   if (navboxes === false) score.push('no navboxes');

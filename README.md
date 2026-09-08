@@ -59,6 +59,8 @@ carries the board for anyone who wants to play it.
   clicked. Reaching for one costs nothing — it is simply not a road.
 - Racing a challenge puts a **ghost** in the HUD: where the challenger was when
   their clock read what yours reads now. It can be switched off in settings.
+- Every finished race is scored against **par** — the shortest route that
+  exists. Matching it is the perfect game; you cannot do better than it.
 - Every result screen breaks the run into **splits** — what each hop cost, and
   which one cost the most.
 - **Contents** jumps to any section; **Find** filters the page down to the links
@@ -236,6 +238,48 @@ from there.
 graph stored against Daily #12 would be a different race wearing the same
 number — in your record, in your streak, and in the median. The daily card says
 so when the switch is on.
+
+### Par
+
+Clicks alone do not say much. A four on a pair that is four hops apart is a
+perfect run; a four on a pair that is two hops apart is a scramble. Par settles
+which one you just had:
+
+```
+Par 1                                          Double bogey
+Apple → Fruit
+1 click was the best possible. You took 3.
+```
+
+Par is the shortest route, so it **cannot be beaten** — the ladder runs one way
+and only its first rungs are worth a name: par, bogey, double bogey, triple
+bogey, then plain `+4`. Matching par is the win inside the win.
+
+It costs nothing to compute, because the shortest-route search was already
+running on that screen. It lands a second or two after the result does, which is
+why the record fills in afterwards rather than at the moment you finish.
+
+**Only a route proved shortest can be par.** The three-hop sweep can return a
+route it found after a shallower sweep was cut short — the shortest *seen*, not
+the shortest there is — and a score against a maybe is not a score. The search
+reports `certain` for exactly this, and when it is false the panel keeps its old
+heading and says so: *"the shortest route found. Shorter ones were not ruled
+out, so this is not a par."*
+
+A run that beats the route outright means the search missed it, which is rare
+and worth saying plainly rather than dressing up as a negative handicap.
+
+**Over par** is the one number in the record that knows what a race was worth.
+It counts only the races that were actually scored, so it has its own
+denominator — *"+1.4, 23 scored"* — and past runs from before par existed are
+simply not in it. Each history row carries its own, and the share text picks it
+up when the search proved it before you copied:
+
+```
+The Wikipedia Game — Daily #3
+🔗🔗🔗🔗
+4 clicks · 0:24 · par 3 +1
+```
 
 ### Splits
 
