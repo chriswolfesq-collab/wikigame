@@ -1,7 +1,7 @@
 // Player history, kept in localStorage. Nothing leaves the browser.
 
 const KEY = 'wikigame:v1';
-const VERSION = 3;
+const VERSION = 4;
 
 const BLANK = {
   // settingsVersion is deliberately absent — its absence in a stored blob is
@@ -23,7 +23,10 @@ const BLANK = {
   dailyResults: {}, // dailyNumber -> { ms, clicks, won }
   dailySeen: {}, // dailyNumber -> [{ ms, clicks, won }] — every run this browser has seen
   history: [], // most recent first, capped
-  settings: { images: true, navboxes: true, ghost: true, hubBan: false, theme: 'light' }
+  // `hubBan` is not here any more — Expert is a difficulty now, and `difficulty`
+  // carries it. A blob that still has the old key is read once, by
+  // storedDifficulty(), so nobody loses a choice they had already made.
+  settings: { images: true, navboxes: true, ghost: true, difficulty: 'any', theme: 'light' }
 };
 
 let cache = null;
@@ -55,6 +58,17 @@ function migrate() {
   // v3 — a start-equals-target race used to register as an instant win at
   // 0 clicks and 0:00, which no honest run can ever beat. Undo that damage.
   if (from < 3) repairSelfRaces();
+
+  // v4 — Expert stopped being a switch of its own and became the rung above
+  // hard on the quick-race chips. Anyone who had the switch on had chosen the
+  // closed board, so they land on that chip rather than quietly back on the
+  // ordinary one. It has to happen here: `difficulty` is defaulted in BLANK,
+  // so by the time anything reads the settings there is no telling a stored
+  // "any" from a value nobody ever picked.
+  if (from < 4) {
+    if (cache.settings.hubBan === true) cache.settings.difficulty = 'expert';
+    delete cache.settings.hubBan;
+  }
 
   cache.settingsVersion = VERSION;
   save();

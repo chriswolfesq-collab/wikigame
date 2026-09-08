@@ -1107,9 +1107,11 @@ a { color: var(--link); }
   cursor: not-allowed;
 }
 
-.card-mode { padding-top: 16px; padding-bottom: 16px; }
-.switch-mode { align-items: flex-start; font-size: 1rem; margin-bottom: 6px; }
-.switch-mode strong { font-family: var(--serif); }
+/* Expert is the rung above hard rather than a tier of its own, so its chip
+   carries the same warning colour the board wears in the HUD. */
+.chip-expert.is-on { background: var(--bad); border-color: var(--bad); color: var(--primary-ink); }
+.chip-expert:not(.is-on) { color: var(--bad); }
+#expert-note { max-width: 62ch; color: var(--ink-2); }
 .daily-note { margin: 10px 0 0; }
 
 /* The one thing in the HUD that says this board is not the ordinary one. It

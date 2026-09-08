@@ -6,8 +6,23 @@ import { mulberry32 } from './util.js';
 export const DIFFICULTY = {
   easy: { label: 'Easy', hint: 'Neighbouring topics — a few clicks apart.' },
   medium: { label: 'Medium', hint: 'Different worlds. You will need a bridge article.' },
-  hard: { label: 'Hard', hint: 'Nothing obvious connects these. Think laterally.' }
+  hard: { label: 'Hard', hint: 'Nothing obvious connects these. Think laterally.' },
+  // The rung above hard, and the only one that is not just a tier of the pool:
+  // it deals the same hard races and closes the thirty biggest articles as
+  // well. `tier` is the pool it actually draws from.
+  expert: {
+    label: 'Expert',
+    tier: 'hard',
+    hubBan: true,
+    hint: 'The hard tier, with the thirty biggest articles closed.'
+  }
 };
+
+/** What a difficulty choice means to the rest of the game. */
+export function difficultyOptions(difficulty) {
+  const d = DIFFICULTY[difficulty];
+  return { difficulty: d?.tier || difficulty, hubBan: Boolean(d?.hubBan) };
+}
 
 // PUZZLES[0] is the signature race. It is medium, so it is not part of the
 // hard-only rotation (see DAILY_DIFFICULTY) — but it was Daily #1 before the

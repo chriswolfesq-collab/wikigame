@@ -15,7 +15,7 @@ back-button escape to Google.
 | **Quick race** | Random pull from a curated pool of 209 races, filterable by difficulty. It remembers what it has dealt you, so races do not come round again until you have worked through the pool. |
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index — and a difficulty estimate before you commit. |
-| **Expert Mode** | A switch, not a race of its own: the thirty biggest articles on Wikipedia are closed, on quick races and your own pairs. It rides in the link, so a challenge is played on the board it was set on. |
+| **Expert** | The rung above hard on the quick-race chips: the same hard races, with the thirty biggest articles on Wikipedia closed. It rides in the link, so a challenge is played on the board it was set on. |
 | **Round of five** | Five races back to back, each scored against par, one card at the end. The link deals the same five to whoever you send it to. |
 | **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat, and with your pace running alongside them as a ghost. |
 
@@ -160,7 +160,7 @@ Pages, S3). There is nothing to configure.
 Routes live in the hash, so the whole thing is one static page:
 `#/round/vqjkbw?d=hard`,
 `#/race/Apple/Pearl_Harbor?daily=1`, `#/race/Apple/Pearl_Harbor?hb=1` for a
-race in Expert Mode, or with a finished run attached,
+race in Expert, or with a finished run attached,
 `#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&hb=1&p=<route>&t=<pace>`.
 
 `mode` carries how the race was chosen — `daily`, `random` (curated pool),
@@ -180,7 +180,7 @@ degrades to no route rather than breaking the link, and a `t` whose length does
 not line up with the route it arrived with is dropped rather than pinned to the
 wrong hops.
 
-### Expert Mode
+### Expert
 
 Every long race on Wikipedia has the same optimal shape: climb to an article
 that links to everything, then descend. United States, World War II, London,
@@ -188,7 +188,21 @@ Latin — reach one of those and the rest of the board opens up, whatever the tw
 articles were. It is a real strategy, it works from almost anywhere, and it is
 the same strategy every time.
 
-Switch Expert Mode on and the thirty of them in `js/hubs.js` are closed. They
+**Expert is the rung above hard**, and the only difficulty that is not simply a
+tier of the pool: it deals the same hard races and closes the thirty biggest
+articles as well. `DIFFICULTY.expert` carries a `tier` and a `hubBan` flag, and
+`difficultyOptions()` is what the rest of the game reads — so a quick race, two
+random articles, your own pair and a round all take the board off the one chip
+rather than off a switch somewhere else on the page.
+
+It was a standalone switch until it had a name that fitted a ladder. Anyone who
+had that switch on is moved onto the Expert chip by the `v4` settings migration
+rather than quietly put back on the ordinary board; the old `hubBan` key is
+dropped in the same pass. It has to happen there, because `difficulty` is
+defaulted in `BLANK` and by the time anything reads the settings there is no
+telling a stored `any` from a value nobody ever picked.
+
+Pick Expert and the thirty hubs in `js/hubs.js` are closed. They
 are struck through on the page rather than deleted: knowing that the road you
 wanted is shut is part of the game this mode is asking you to play, and a
 silently missing link would just read as a broken board. The tally at the top
@@ -240,7 +254,7 @@ from there.
 **The daily never uses it.** It is one shared board, and a run on a smaller
 graph stored against Daily #12 would be a different race wearing the same
 number — in your record, in your streak, and in the median. The daily card says
-so when the switch is on.
+so when Expert is selected.
 
 ### A round of five
 
@@ -506,7 +520,7 @@ race in progress needs them more, so a pending one is cancelled the moment a
 race starts. Now that the search reaches three hops it can tell a wall from a
 hunt — *"nothing inside three clicks"* is a different warning from *"nothing
 inside two"* — and it sizes the pair up against the board it will be played on,
-so turning Expert Mode on changes the estimate.
+so picking Expert changes the estimate.
 
 ### The daily schedule
 

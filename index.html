@@ -50,7 +50,7 @@
       </div>
       <p class="crowd-line" id="daily-crowd" hidden></p>
       <p class="muted small daily-note" id="daily-hubban" hidden>
-        Expert Mode is on, but the daily is always played with the big articles
+        Expert is selected, but the daily is always played with the big articles
         open — one shared board, one number to compare.
       </p>
     </section>
@@ -62,6 +62,7 @@
         <button class="chip" role="radio" aria-checked="false" data-difficulty="easy">Easy</button>
         <button class="chip" role="radio" aria-checked="false" data-difficulty="medium">Medium</button>
         <button class="chip" role="radio" aria-checked="false" data-difficulty="hard">Hard</button>
+        <button class="chip chip-expert" role="radio" aria-checked="false" data-difficulty="expert">Expert</button>
       </div>
       <p class="muted" id="difficulty-hint"></p>
       <div class="card-foot">
@@ -69,6 +70,13 @@
         <button class="btn btn-ghost" id="btn-wild">Two random articles</button>
       </div>
       <p class="muted small">“Two random articles” pulls straight from Wikipedia — it can be brutal, and occasionally impossible.</p>
+      <p class="muted small" id="expert-note" hidden>
+        <strong>Expert</strong> closes the <span id="hubban-count">30</span> biggest articles on
+        Wikipedia. Every long race has the same optimal shape — climb to something that links to
+        everything, then descend — and this shuts that off, so the bridge has to be found in the
+        subject matter rather than climbed to out of it. It applies to your own pairs and to a
+        round as well; the daily always keeps them open.
+      </p>
     </section>
 
     <section class="card" id="round-card">
@@ -85,20 +93,6 @@
         <button class="btn btn-ghost" id="btn-round-resume" hidden>Resume</button>
         <p class="muted" id="round-status"></p>
       </div>
-    </section>
-
-    <section class="card card-mode">
-      <label class="switch switch-mode">
-        <input type="checkbox" id="opt-hubban">
-        <span><strong>Expert Mode</strong> — the <span id="hubban-count">30</span> biggest articles are closed</span>
-      </label>
-      <p class="muted small">
-        Every long race has the same optimal shape: climb to an article that
-        links to everything, then descend. United States, World War II, London,
-        Latin. Close those and the bridge has to be found in the subject matter
-        rather than climbed to out of it. Applies to quick races and your own
-        pairs; the daily always keeps them open.
-      </p>
     </section>
 
     <section class="card">
@@ -152,10 +146,11 @@
       <p class="muted small settings-note">
         Navigation boxes are the link farms at the foot of an article. Switching
         them off is the harder game — a big page can lose half its ways out — so
-        the setting you played under is recorded with each race. The ghost pacer
-        shows how far along your challenger was at this reading on the clock; it
-        names none of their articles, and switching it off changes nothing about
-        the board.
+        the setting you played under is recorded with each race. Expert, in the
+        quick race chips, is the other setting that changes the board. The ghost
+        pacer changes nothing about it: it shows how far along your challenger
+        was at this reading on the clock, names none of their articles, and
+        switching it off costs you only that.
       </p>
       <p class="muted small">
         Article text and images come live from Wikipedia and are available under
