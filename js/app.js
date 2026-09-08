@@ -11,6 +11,7 @@ import {
   dailyPuzzle,
   randomPuzzle,
   msUntilNextDaily,
+  difficultyOptions,
   newRoundSeed,
   ROUND_HOLES
 } from './puzzles.js';
@@ -226,21 +227,14 @@ function wireHome() {
   });
 
   $$('.chip[data-difficulty]').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      state.difficulty = chip.dataset.difficulty;
-      $$('.chip[data-difficulty]').forEach((c) => {
-        const on = c === chip;
-        c.classList.toggle('is-on', on);
-        c.setAttribute('aria-checked', String(on));
-      });
-      renderDifficultyHint();
-    });
+    chip.addEventListener('click', () => setDifficulty(chip.dataset.difficulty));
   });
-  renderDifficultyHint();
+  setDifficulty(storedDifficulty(), { save: false });
 
   $('#btn-random').addEventListener('click', () => {
-    const p = randomPuzzle(state.difficulty, state.lastConfig);
-    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: hubBanOn() }));
+    const { difficulty, hubBan } = raceOptions();
+    const p = randomPuzzle(difficulty, state.lastConfig);
+    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan }));
   });
 
   $('#btn-wild').addEventListener('click', async (e) => {
@@ -293,13 +287,7 @@ function wireHome() {
   });
 
   const s = store.getSettings();
-  const hub = $('#opt-hubban');
-  hub.checked = store.getSettings().hubBan === true;
   $('#hubban-count').textContent = String(HUB_COUNT);
-  hub.addEventListener('change', () => {
-    store.setSetting('hubBan', hub.checked);
-    renderHome();
-  });
 
   const imgs = $('#opt-images');
   const navs = $('#opt-navboxes');
@@ -343,9 +331,30 @@ function renderRoundCard() {
     : `Round ${card.seed} is ${t.played} of ${ROUND_HOLES} in. Starting a new one puts this card down.`;
 }
 
+/** Which chip to open on. A stored value that is no longer a tier falls back. */
+function storedDifficulty() {
+  const d = store.getSettings().difficulty;
+  return d === 'any' || DIFFICULTY[d] ? d : 'any';
+}
+
+function setDifficulty(value, { save = true } = {}) {
+  state.difficulty = value;
+  if (save) store.setSetting('difficulty', value);
+  $$('.chip[data-difficulty]').forEach((c) => {
+    const on = c.dataset.difficulty === value;
+    c.classList.toggle('is-on', on);
+    c.setAttribute('aria-checked', String(on));
+  });
+  renderDifficultyHint();
+  renderHome();
+}
+
 function renderDifficultyHint() {
   const d = DIFFICULTY[state.difficulty];
   $('#difficulty-hint').textContent = d ? d.hint : 'Anything from the pool.';
+  // Expert changes the board rather than the tier, which is worth explaining
+  // where it is chosen and nowhere else.
+  $('#expert-note').hidden = !hubBanOn();
 }
 
 /**
@@ -835,9 +844,21 @@ function onArticleClick(e) {
  * Only for that race. Your stored settings are never written — leave the race
  * and your own board is exactly as you left it.
  */
-/** The home screen's standing choice, which every race it launches carries. */
+/**
+ * What the quick-race chips currently mean.
+ *
+ * Expert is the rung above hard rather than a tier of its own: it deals the
+ * same hard races and closes the thirty biggest articles as well. Everything
+ * the home screen launches — a quick race, two random articles, your own pair,
+ * a round — reads the board off the same chip, so there is one control and one
+ * answer to "which board am I on".
+ */
+function raceOptions() {
+  return difficultyOptions(state.difficulty);
+}
+
 function hubBanOn() {
-  return store.getSettings().hubBan === true;
+  return raceOptions().hubBan;
 }
 
 function raceSettings(config) {
@@ -891,10 +912,11 @@ async function skipRace() {
     return;
   }
 
-  const p = randomPuzzle(state.difficulty, state.lastConfig);
-  endRace();
   // A skip is meant to be the same kind of race again, and the board it is
-  // played on is part of that kind.
+  // played on is part of that kind — so the tier comes from the race being
+  // skipped rather than from whatever the chips say now.
+  const p = randomPuzzle(race.hubBan ? 'hard' : state.difficulty, state.lastConfig);
+  endRace();
   navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: race.hubBan }));
 }
 
@@ -1113,7 +1135,9 @@ function tickGhost(race) {
 function startRound(seed, opts) {
   const card = round.open(seed, opts);
   state.round = { card, index: round.nextHole(card) };
-  state.difficulty = card.difficulty;
+  // The card stores the tier and the board separately; the chips are one
+  // control, so put them back on the rung those two add up to.
+  state.difficulty = card.hubBan && card.difficulty === 'hard' ? 'expert' : card.difficulty;
 
   if (state.round.index < 0) {
     // Every hole played. Re-opening the link shows the card rather than
@@ -1271,9 +1295,7 @@ function roundUrl(card) {
 function wireRound() {
   $('#btn-round').addEventListener('click', () => {
     round.clear();
-    navigate(
-      roundHash({ seed: newRoundSeed(), difficulty: state.difficulty, hubBan: hubBanOn() })
-    );
+    navigate(roundHash({ seed: newRoundSeed(), ...raceOptions() }));
   });
 
   $('#btn-round-resume').addEventListener('click', () => {
@@ -1960,9 +1982,10 @@ function wireModals() {
   });
 
   $('#btn-new').addEventListener('click', () => {
-    const p = randomPuzzle(state.difficulty, state.lastConfig);
+    const { difficulty, hubBan } = raceOptions();
+    const p = randomPuzzle(difficulty, state.lastConfig);
     $('#modal-result').hidden = true;
-    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: hubBanOn() }));
+    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan }));
   });
   $('#btn-home').addEventListener('click', goHome);
 }
