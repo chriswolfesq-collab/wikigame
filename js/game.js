@@ -2,6 +2,7 @@
 // path, runs the clock, and calls back when something changes.
 
 import { fetchArticle, resolveTitle } from './wiki.js';
+import { closedFor } from './hubs.js';
 import { titleKey } from './util.js';
 
 export const HINT_PENALTY_MS = 15000;
@@ -16,8 +17,9 @@ export const BACK_PENALTY_MS = 5000;
 export class Race {
   /**
    * @param {{start:string,target:string,mode:string,dailyNumber?:number|null,
-   *          challenge?:object|null, settings:object,
-   *          onChange:Function, onArticle:Function, onError:Function, onFinish:Function}} opts
+   *          challenge?:object|null, settings:object, hubBan?:boolean,
+   *          onChange:Function, onArticle:Function, onError:Function,
+   *          onFinish:Function, onBlocked?:Function}} opts
    */
   constructor(opts) {
     this.start = opts.start;
@@ -30,8 +32,12 @@ export class Race {
     this.onArticle = opts.onArticle || (() => {});
     this.onError = opts.onError || (() => {});
     this.onFinish = opts.onFinish || (() => {});
+    this.onBlocked = opts.onBlocked || (() => {});
 
-    this.path = []; // [{ title, displayTitle }]
+    // [{ title, displayTitle, at, off }] — `at` is the clock reading on
+    // arrival, which is what turns a route into a set of splits; `off` counts
+    // the excursions that were rewound back into this article.
+    this.path = [];
     this.visited = new Set(); // every title seen, including backtracked
     this.status = 'idle'; // idle | loading | racing | finished
     this.won = false;
@@ -45,6 +51,12 @@ export class Race {
     // is ever written back to them.
     this.settings = { images: true, navboxes: true, ...(opts.settings || {}) };
     this.navboxes = this.settings.navboxes !== false;
+
+    // No Highways. The board of closed titles cannot be built until the two
+    // endpoints have resolved — they are the one thing the mode never closes,
+    // and `USA` is not yet `United States` — so it is filled in by begin().
+    this.hubBan = Boolean(opts.hubBan);
+    this.closed = null;
     this.startedAt = null;
     this.finishedMs = null;
     this.error = null;
@@ -97,8 +109,12 @@ export class Race {
         );
       }
 
+      // Both titles are now the ones the board will use, which is what the
+      // closed list has to be built against.
+      if (this.hubBan) this.closed = closedFor(article.title, this.target);
+
       this.start = article.title;
-      this.path = [{ title: article.title, displayTitle: article.displayTitle }];
+      this.path = [{ title: article.title, displayTitle: article.displayTitle, at: 0, off: 0 }];
       this.visited.add(titleKey(article.title));
       this.status = 'racing';
       this.startedAt = performance.now();
@@ -120,6 +136,18 @@ export class Race {
       const article = await fetchArticle(title);
       if (this.status !== 'racing') return false;
 
+      // A link written as a redirect — `U.S.` for United States — looks live
+      // on the board, because the board only ever saw the word. The rule is
+      // the resolved title, so the move is refused here instead, and it costs
+      // nothing: the board should have shut that link and could not.
+      const hub = this.closed?.get(titleKey(article.title));
+      if (hub) {
+        this._loading = false;
+        this.onBlocked(hub, title, this);
+        this.onChange(this);
+        return false;
+      }
+
       // A redirect can land us back where we already are.
       if (titleKey(article.title) === titleKey(this.current?.title)) {
         this._loading = false;
@@ -127,7 +155,13 @@ export class Race {
         return false;
       }
 
-      this.path.push({ title: article.title, displayTitle: article.displayTitle });
+      // Read the clock before the push: this hop's split runs from here.
+      this.path.push({
+        title: article.title,
+        displayTitle: article.displayTitle,
+        at: this.elapsedMs,
+        off: 0
+      });
       this.visited.add(titleKey(article.title));
       this._loading = false;
       this.onArticle(article, this);
@@ -153,6 +187,10 @@ export class Race {
       const article = await fetchArticle(previous.title);
       this.path.pop();
       this.backs += 1;
+      // The time spent down there is already inside this article's split; the
+      // count is what says the split covers a detour rather than deliberation.
+      const back = this.path[this.path.length - 1];
+      back.off = (back.off || 0) + 1;
       this._loading = false;
       this.onArticle(article, this);
       this.onChange(this);
@@ -174,8 +212,11 @@ export class Race {
     try {
       const article = await fetchArticle(target.title);
       // Jumping back three costs what pressing Back three times would.
-      this.backs += this.path.length - 1 - index;
+      const popped = this.path.length - 1 - index;
+      this.backs += popped;
       this.path = this.path.slice(0, index + 1);
+      const to = this.path[index];
+      to.off = (to.off || 0) + popped;
       this._loading = false;
       this.onArticle(article, this);
       this.onChange(this);
@@ -216,6 +257,21 @@ export class Race {
     this.onChange(this);
   }
 
+  /**
+   * Time spent on each article of the kept route, aligned to `path`.
+   *
+   * A split runs from arriving somewhere to arriving at the next thing kept,
+   * so an excursion that was rewound is charged to the article it was launched
+   * from — which is where the decision was actually made. The splits therefore
+   * tile the whole run: they add up to the final time, penalties included.
+   */
+  hopTimes() {
+    const end = this.finishedMs ?? this.elapsedMs;
+    return this.path.map((step, i) =>
+      Math.max(0, (this.path[i + 1]?.at ?? end) - (step.at ?? 0))
+    );
+  }
+
   result() {
     return {
       mode: this.mode,
@@ -228,9 +284,12 @@ export class Race {
       backs: this.backs,
       seen: this.visited.size,
       navboxes: this.navboxes,
+      hubBan: this.hubBan,
       dailyNumber: this.dailyNumber,
       challenge: this.challenge,
-      path: this.path.map((p) => p.title)
+      path: this.path.map((p) => p.title),
+      hopTimes: this.hopTimes(),
+      detours: this.path.map((p) => p.off || 0)
     };
   }
 }

@@ -2,11 +2,12 @@
 
 import { $, $$, el, fmtTime, fmtTimeShort, fmtDelta, debounce, copyText, titleKey, toUrlTitle, median } from './util.js';
 import { Race, HINT_PENALTY_MS, BACK_PENALTY_MS } from './game.js';
-import { prepareArticle, countLinks, scrubEvents } from './render.js';
+import { prepareArticle, countLinks, countClosed, closeLink, scrubEvents } from './render.js';
 import { searchTitles, resolveTitle, randomArticles, fetchSummary } from './wiki.js';
 import { findShortestRoute } from './solver.js';
 import * as finder from './finder.js';
 import { DIFFICULTY, dailyPuzzle, randomPuzzle, msUntilNextDaily } from './puzzles.js';
+import { HUB_COUNT, closedFor } from './hubs.js';
 import * as store from './stats.js';
 import * as scoreboard from './scoreboard.js';
 import { parseHash, raceHash, raceUrl, challengeUrl, shareBlock } from './share.js';
@@ -17,6 +18,7 @@ const state = {
   lastConfig: null,
   pendingChallenge: null,
   raceHash: null,
+  ghost: null,
   historyExpanded: false,
   timer: null,
   routeSearch: null,
@@ -74,6 +76,7 @@ async function route() {
       target: r.target,
       mode: r.mode,
       dailyNumber: r.dailyNumber,
+      hubBan: r.hubBan,
       challenge: r.challenge
     };
     // A link carrying someone's score opens on that result, so the reader
@@ -140,6 +143,9 @@ function showChallenge(config) {
     : '';
   note.hidden = !note.textContent;
 
+  const closedNote = $('#challenge-hubban');
+  closedNote.hidden = !config.hubBan;
+
   const spoiler = $('#challenge-path');
   if (c.path && c.path.length > 1) {
     spoiler.open = false;
@@ -191,7 +197,7 @@ function wireHome() {
 
   $('#btn-random').addEventListener('click', () => {
     const p = randomPuzzle(state.difficulty, state.lastConfig);
-    navigate(raceHash({ start: p.start, target: p.target, mode: 'random' }));
+    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: hubBanOn() }));
   });
 
   $('#btn-wild').addEventListener('click', async (e) => {
@@ -201,7 +207,7 @@ function wireHome() {
     try {
       const [a, b] = await randomArticles(2);
       if (!a || !b) throw new Error('Wikipedia did not hand back two usable articles.');
-      navigate(raceHash({ start: a, target: b, mode: 'wild' }));
+      navigate(raceHash({ start: a, target: b, mode: 'wild', hubBan: hubBanOn() }));
     } catch (err) {
       toast(err.message);
     } finally {
@@ -244,14 +250,25 @@ function wireHome() {
   });
 
   const s = store.getSettings();
+  const hub = $('#opt-hubban');
+  hub.checked = store.getSettings().hubBan === true;
+  $('#hubban-count').textContent = String(HUB_COUNT);
+  hub.addEventListener('change', () => {
+    store.setSetting('hubBan', hub.checked);
+    renderHome();
+  });
+
   const imgs = $('#opt-images');
   const navs = $('#opt-navboxes');
+  const gho = $('#opt-ghost');
   const theme = $('#opt-theme');
   imgs.checked = s.images;
   navs.checked = s.navboxes;
+  gho.checked = s.ghost !== false;
   theme.value = s.theme;
   imgs.addEventListener('change', () => store.setSetting('images', imgs.checked));
   navs.addEventListener('change', () => store.setSetting('navboxes', navs.checked));
+  gho.addEventListener('change', () => store.setSetting('ghost', gho.checked));
   theme.addEventListener('change', () => {
     store.setSetting('theme', theme.value);
     applyTheme(theme.value);
@@ -308,6 +325,12 @@ function renderHome() {
       : `Next daily in ${untilNextDaily()}.`;
     $('#btn-daily').textContent = "Play today's race";
   }
+
+  // The daily is one shared board, so No Highways does not touch it: a run
+  // on a smaller graph stored against Daily #12 would be a different race
+  // wearing the same number, in the record and in the median both.
+  const dailyNote = $('#daily-hubban');
+  dailyNote.hidden = !hubBanOn();
 
   renderCrowd('#daily-crowd', p.number, done?.won ? done.clicks : null);
 
@@ -401,6 +424,11 @@ function renderStats(summary, streak) {
           { class: h.won ? 'won' : 'lost' },
           el('span', { class: 'h-mark', text: h.won ? '✓' : '✕' }),
           el('span', { class: 'h-race', text: `${h.start} → ${h.target}` }),
+          // Race again replays the board the row was set on, so the row has to
+          // say when that is not the ordinary one.
+          h.hubBan
+            ? el('span', { class: 'h-mod', title: 'Played with No Highways', text: 'NH' })
+            : null,
           el('span', { class: 'h-score', text: h.won ? `${h.clicks} · ${fmtTimeShort(h.ms)}` : '—' }),
           // The row used to be one unlabelled button: the race name was the
           // control, and nothing said so until you hovered or tabbed onto it.
@@ -408,8 +436,9 @@ function renderStats(summary, streak) {
             'button',
             {
               class: 'btn btn-ghost small h-again',
-              title: `Race ${h.start} → ${h.target} again`,
-              onclick: () => navigate(raceHash({ start: h.start, target: h.target, mode: 'custom' }))
+              title: `Race ${h.start} → ${h.target} again${h.hubBan ? ', with No Highways' : ''}`,
+              onclick: () =>
+                navigate(raceHash({ start: h.start, target: h.target, mode: 'custom', hubBan: h.hubBan }))
             },
             el('span', { text: '↻' }),
             el('span', { class: 'btn-word', text: ' Race again' })
@@ -545,7 +574,7 @@ const estimateCustomDifficulty = debounce(async () => {
     return;
   }
 
-  const pair = `${titleKey(rawStart)}\u241f${titleKey(rawTarget)}`;
+  const pair = `${titleKey(rawStart)}\u241f${titleKey(rawTarget)}${hubBanOn() ? '\u241fhb' : ''}`;
   if (pair === state.estimatePair) return; // already answered, or in flight
   state.estimatePair = pair;
 
@@ -564,7 +593,10 @@ const estimateCustomDifficulty = debounce(async () => {
       return;
     }
 
-    const route = await findShortestRoute(a.title, b.title, { signal: controller.signal });
+    const route = await findShortestRoute(a.title, b.title, {
+      signal: controller.signal,
+      closed: hubBanOn() ? closedFor(a.title, b.title) : null
+    });
     if (controller.signal.aborted) return void (state.estimatePair = null);
     out.textContent = difficultyLine(a.title, b.title, route);
     out.hidden = !out.textContent;
@@ -582,10 +614,11 @@ function difficultyLine(start, target, route) {
   if (route.error) return '';
   if (route.hops === 1) return `${pair}: one click apart. A warm-up.`;
   if (route.hops === 2) return `${pair}: two clicks apart, if you find the right bridge.`;
-  // Only the finished sweep earns the firm version.
-  return route.exhaustive
-    ? `${pair}: nothing inside two clicks. A proper hunt.`
-    : `${pair}: further than two clicks, as far as could be checked.`;
+  if (route.hops === 3) return `${pair}: three clicks apart. Two bridges to find, not one.`;
+  // Only a sweep that ran to the end earns the firm version.
+  if (route.ruledOut === 3) return `${pair}: nothing inside three clicks. A wall.`;
+  if (route.ruledOut === 2) return `${pair}: nothing inside two clicks. A proper hunt.`;
+  return `${pair}: further than two clicks, as far as could be checked.`;
 }
 
 /** Exact title first; fall back to the top search hit so half-typed input works. */
@@ -617,7 +650,7 @@ async function startCustomRace() {
       return void (status.textContent = 'Start and target are the same article.');
     }
     status.textContent = '';
-    navigate(raceHash({ start: a.title, target: b.title, mode: 'custom' }));
+    navigate(raceHash({ start: a.title, target: b.title, mode: 'custom', hubBan: hubBanOn() }));
   } catch (err) {
     status.textContent = err.message;
   }
@@ -718,6 +751,11 @@ function onArticleClick(e) {
  * Only for that race. Your stored settings are never written — leave the race
  * and your own board is exactly as you left it.
  */
+/** The home screen's standing choice, which every race it launches carries. */
+function hubBanOn() {
+  return store.getSettings().hubBan === true;
+}
+
 function raceSettings(config) {
   const mine = store.getSettings();
   if (!config.challenge) return mine;
@@ -757,7 +795,7 @@ async function skipRace() {
       const [a, b] = await randomArticles(2);
       if (!a || !b) throw new Error('Wikipedia did not hand back two usable articles.');
       endRace();
-      navigate(raceHash({ start: a, target: b, mode: 'wild' }));
+      navigate(raceHash({ start: a, target: b, mode: 'wild', hubBan: race.hubBan }));
     } catch (err) {
       toast(err.message);
     } finally {
@@ -769,7 +807,9 @@ async function skipRace() {
 
   const p = randomPuzzle(state.difficulty, state.lastConfig);
   endRace();
-  navigate(raceHash({ start: p.start, target: p.target, mode: 'random' }));
+  // A skip is meant to be the same kind of race again, and the board it is
+  // played on is part of that kind.
+  navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: race.hubBan }));
 }
 
 function startRace(config) {
@@ -782,17 +822,20 @@ function startRace(config) {
   state.raceHash = location.hash;
   showScreen('race');
   $('#btn-skip').hidden = !REROLLABLE.has(config.mode);
+  $('#hud-hubban').hidden = !config.hubBan;
 
   $('#article-host').replaceChildren(el('p', { class: 'muted', text: 'Loading the opening article…' }));
   $('#hud-target-title').textContent = config.target;
   $('#trail').replaceChildren();
   renderChallengeBanner(config.challenge, config);
+  setupGhost(config.challenge);
 
   const race = new Race({
     ...config,
     settings: raceSettings(config),
     onChange: renderHud,
     onArticle: showArticle,
+    onBlocked: showBlocked,
     onError: (err, r) => {
       const message = err.message || 'Wikipedia did not answer. Try that link again.';
       // A failure during begin() leaves nothing on the board to go back to.
@@ -804,7 +847,9 @@ function startRace(config) {
   state.race = race;
 
   state.timer = setInterval(() => {
-    if (race.status === 'racing') $('#hud-time').textContent = fmtTime(race.elapsedMs);
+    if (race.status !== 'racing') return;
+    $('#hud-time').textContent = fmtTime(race.elapsedMs);
+    tickGhost(race);
   }, 100);
 
   race.begin();
@@ -841,6 +886,8 @@ function endRace() {
   state.timer = null;
   state.routeSearch?.abort();
   state.routeSearch = null;
+  state.ghost = null;
+  $('#ghost-line').hidden = true;
   finder.reset();
   if (state.race) state.race.status = 'abandoned';
   state.race = null;
@@ -877,6 +924,90 @@ function renderChallengeBanner(challenge, config) {
     ].filter(Boolean)
   );
   banner.hidden = false;
+}
+
+/* ------------------------------------------------------------- the ghost */
+
+/**
+ * A challenge link carries the pace of the run that made it — one figure per
+ * click — so the challenger can be raced rather than merely out-scored. The
+ * HUD says where they were when their clock read what yours reads now.
+ *
+ * It names none of their articles. The only thing it adds to what the
+ * challenge card already showed is *when* they got their clicks in, so racing
+ * the ghost gives away nothing that accepting the challenge did not.
+ */
+function makeGhost(challenge) {
+  if (!challenge?.times?.length) return null;
+  if (store.getSettings().ghost === false) return null;
+
+  let sum = 0;
+  const arrivals = challenge.times.map((ms) => (sum += ms));
+  return {
+    by: challenge.by || 'Your challenger',
+    arrivals, // when they had made 1, 2, 3 … clicks
+    clicks: challenge.clicks ?? arrivals.length,
+    finishMs: challenge.ms || arrivals[arrivals.length - 1],
+    // Starts level rather than at -1: the first tick is not a hop going by.
+    hop: 0,
+    text: ''
+  };
+}
+
+function setupGhost(challenge) {
+  const line = $('#ghost-line');
+  state.ghost = makeGhost(challenge);
+  line.classList.remove('is-hop');
+  line.hidden = !state.ghost;
+  if (!state.ghost) return;
+  $('#ghost-icon').textContent = '👻';
+  $('#ghost-text').textContent = `${state.ghost.by} is running this one with you.`;
+  $('#ghost-delta').hidden = true;
+}
+
+function tickGhost(race) {
+  const g = state.ghost;
+  if (!g) return;
+
+  const now = race.elapsedMs;
+  let hop = 0;
+  while (hop < g.arrivals.length && g.arrivals[hop] <= now) hop++;
+  const done = now >= g.finishMs;
+
+  // A hop of theirs going by is the one thing on this line worth looking up
+  // for, so it gets a moment of movement rather than a silent number change.
+  if (hop !== g.hop) {
+    g.hop = hop;
+    const line = $('#ghost-line');
+    line.classList.remove('is-hop');
+    void line.offsetWidth; // restart the animation rather than skip it
+    line.classList.add('is-hop');
+  }
+
+  const text = done
+    ? `${g.by} had finished by now — ${g.clicks} click${g.clicks === 1 ? '' : 's'} in ${fmtTimeShort(g.finishMs)}.`
+    : `${g.by} was ${hop} click${hop === 1 ? '' : 's'} in by now.`;
+  // Ten writes a second into a live region would be ten announcements, so the
+  // sentence is only replaced when it has actually changed. The delta beside
+  // it moves constantly and is deliberately left out of that region.
+  if (text !== g.text) {
+    g.text = text;
+    $('#ghost-icon').textContent = done ? '🏁' : '👻';
+    $('#ghost-text').textContent = text;
+  }
+
+  const delta = $('#ghost-delta');
+  if (done) {
+    // Their time is gone; what is left is the click count and how far past
+    // their finish you are, which is the number that still moves.
+    delta.className = 'ghost-delta is-behind';
+    delta.textContent = `${fmtDelta(now - g.finishMs)} behind`;
+  } else {
+    const d = race.clicks - hop;
+    delta.className = `ghost-delta ${d > 0 ? 'is-ahead' : d < 0 ? 'is-behind' : 'is-level'}`;
+    delta.textContent = d === 0 ? 'level' : `${d > 0 ? '+' : '\u2212'}${Math.abs(d)} on their pace`;
+  }
+  delta.hidden = false;
 }
 
 function renderHud(race) {
@@ -916,16 +1047,34 @@ function renderHud(race) {
   trail.scrollLeft = trail.scrollWidth;
 }
 
+/**
+ * A link that only turned out to be a highway once it was followed: the board
+ * saw `U.S.`, Wikipedia handed back United States. The move is refused for
+ * free, and every copy of that link on this page is struck through, so the
+ * board catches up with the rule rather than offering it again.
+ */
+function showBlocked(hub, attempted) {
+  toast(`${hub} is closed on this board.`);
+  const key = titleKey(attempted);
+  $$('#article-host a.wg-link').forEach((a) => {
+    if (titleKey(a.dataset.wgTitle) === key) closeLink(a, hub);
+  });
+}
+
 function showArticle(article, race) {
   const settings = race.settings;
   const host = $('#article-host');
-  const prepared = prepareArticle(article.html, { ...settings, visited: race.visited });
+  const prepared = prepareArticle(article.html, {
+    ...settings,
+    visited: race.visited,
+    closed: race.closed
+  });
 
   // With no floated images or infobox, the full column is a punishing measure.
   host.classList.toggle('no-images', !settings.images);
   host.replaceChildren(
     scrubEvents(el('h1', { class: 'article-title', html: article.displayTitle })),
-    articleMetaEl(countLinks(prepared)),
+    articleMetaEl(countLinks(prepared), countClosed(prepared)),
     prepared
   );
   finder.attach(prepared);
@@ -938,20 +1087,29 @@ function showArticle(article, race) {
 // letting someone scroll the whole page to find out.
 const THIN_ARTICLE = 8;
 
-function articleMetaEl(links) {
+function articleMetaEl(links, closed = 0) {
+  // What the mode cost this particular article — the difference between an
+  // article that lost two ways out and one that lost forty.
+  const shut = closed ? `, ${closed.toLocaleString()} closed` : '';
+
   if (links === 0) {
     return el('p', {
       class: 'article-meta is-dead-end',
-      text: 'Dead end — nothing links out of here. Step back.'
+      text: closed
+        ? `Dead end — every way out of here is closed. Step back.`
+        : 'Dead end — nothing links out of here. Step back.'
     });
   }
   if (links <= THIN_ARTICLE) {
     return el('p', {
       class: 'article-meta is-dead-end',
-      text: `Nearly a dead end — only ${links} link${links === 1 ? '' : 's'} out of here.`
+      text: `Nearly a dead end — only ${links} link${links === 1 ? '' : 's'} out of here${shut}.`
     });
   }
-  return el('p', { class: 'article-meta', text: `${links.toLocaleString()} links out of here` });
+  return el('p', {
+    class: 'article-meta',
+    text: `${links.toLocaleString()} links out of here${shut}`
+  });
 }
 
 async function peekTarget() {
@@ -1022,7 +1180,8 @@ function finishRace(result) {
         ? `You opened ${result.seen} articles to find a route of ${result.clicks}.`
         : `You opened ${result.seen} articles before giving up.`
       : null,
-    result.navboxes === false ? 'Navigation boxes were off — the harder board.' : null
+    result.navboxes === false ? 'Navigation boxes were off — the harder board.' : null,
+    result.hubBan ? `No Highways — the ${HUB_COUNT} biggest articles were closed.` : null
   ].filter(Boolean);
   note.textContent = lines.join(' ');
   note.hidden = !lines.length;
@@ -1044,16 +1203,15 @@ function finishRace(result) {
       const d = result.ms - result.challenge.ms;
       lines.push(`${d < 0 ? '✅' : '❌'} ${fmtDelta(d)} ${d < 0 ? 'faster' : 'slower'} than ${who}`);
     }
+    const lead = leadLine(result);
+    if (lead) lines.push(lead);
     cmp.replaceChildren(...lines.map((t) => el('p', { text: t })));
     cmp.hidden = false;
   } else {
     cmp.hidden = true;
   }
 
-  $('#result-path').replaceChildren(
-    el('h3', { class: 'sub', text: `Your path (${result.path.length} article${result.path.length === 1 ? '' : 's'})` }),
-    pathChainEl(result.path)
-  );
+  renderSplits(result);
 
   // Your own run has already gone into the seen pile via store.record().
   renderCrowd('#result-crowd', result.dailyNumber, result.won ? result.clicks : null, {
@@ -1074,6 +1232,158 @@ function finishRace(result) {
   renderHome();
 }
 
+/* ---------------------------------------------------------------- splits */
+
+// A hop that took no measurable time still needs to be visible as a bar.
+const SPLIT_MIN_PCT = 2;
+
+/**
+ * The route with what each hop cost.
+ *
+ * A split runs from arriving at an article to arriving at the next one you
+ * kept, so a detour that was rewound is charged to the article it was launched
+ * from — the place the decision was actually made. That makes the splits tile
+ * the run: they add up to the final time, peek and back penalties included,
+ * and the longest bar is the answer to "where did that go?".
+ *
+ * Arriving at the target ends the race, so the last article is not a stay —
+ * unless the run ended there by giving up, which it very much was.
+ */
+function renderSplits(result) {
+  const box = $('#result-path');
+  const n = result.path.length;
+  const head = el('h3', {
+    class: 'sub',
+    text: `Your route (${n} article${n === 1 ? '' : 's'})`
+  });
+
+  const times = result.hopTimes;
+  if (!times || times.length !== n) {
+    box.replaceChildren(head, pathChainEl(result.path)); // a run from before splits
+    return;
+  }
+
+  const stays = result.won ? n - 1 : n;
+  const theirs = result.challenge?.times || null;
+  const who = result.challenge?.by || 'the challenger';
+  const scale = Math.max(1, ...times.slice(0, stays), ...(theirs || []));
+  const pct = (ms) => Math.max(SPLIT_MIN_PCT, Math.round((100 * ms) / scale));
+
+  // Marking the longest stop is only worth anything against another stop.
+  let slowest = -1;
+  if (stays > 1) {
+    for (let i = 0; i < stays; i++) if (slowest < 0 || times[i] > times[slowest]) slowest = i;
+  }
+
+  const rows = result.path.map((title, i) => {
+    const arrival = result.won && i === n - 1;
+    const mine = times[i];
+    const yours = theirs?.[i];
+    const delta = !arrival && yours != null ? mine - yours : null;
+
+    return el(
+      'li',
+      {
+        class: `split${i === slowest && !arrival ? ' is-slowest' : ''}${arrival ? ' is-end' : ''}`
+      },
+      el('span', { class: 'split-n', text: arrival ? '🏁' : String(i + 1) }),
+      el(
+        'a',
+        {
+          class: 'path-hop split-title',
+          href: `https://en.wikipedia.org/wiki/${toUrlTitle(title)}`,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          title: `Read ${title} on Wikipedia`
+        },
+        title
+      ),
+      result.detours?.[i]
+        ? el('span', {
+            class: 'split-flag',
+            title: `${result.detours[i]} excursion${result.detours[i] === 1 ? '' : 's'} rewound back into this article — the time is in this split`,
+            text: `↩${result.detours[i]}`
+          })
+        : null,
+      arrival
+        ? el('span', { class: 'split-ms is-arrival', text: 'arrived' })
+        : el('span', { class: 'split-ms', text: fmtTime(mine) }),
+      delta == null || Math.abs(delta) < 100
+        ? null
+        : el('span', {
+            class: `split-delta ${delta < 0 ? 'is-good' : 'is-bad'}`,
+            text: `${delta < 0 ? '\u2212' : '+'}${fmtDelta(delta)}`
+          }),
+      // Last in the row, and last for a screen reader: the bar is the figure
+      // beside it drawn again, so it reads after the numbers rather than
+      // interrupting them.
+      arrival
+        ? null
+        : el(
+            'span',
+            { class: 'split-bar' },
+            el('span', { class: 'split-fill', style: `width:${pct(mine)}%` }),
+            yours != null
+              ? el('span', {
+                  class: 'split-ghost',
+                  style: `width:${pct(yours)}%`,
+                  title: `${who} spent ${fmtTime(yours)} on their ${ordinal(i + 1)} article`
+                })
+              : null
+          )
+    );
+  });
+
+  const notes = [];
+  if (stays > 1 && times[slowest] > 0) {
+    const share = Math.round((100 * times[slowest]) / Math.max(1, result.ms));
+    notes.push(
+      `Longest stop: ${result.path[slowest]} — ${fmtTime(times[slowest])}, ${share}% of the run.`
+    );
+  }
+  if (theirs) notes.push(`The faint bar is ${who} on the same hop of their own route.`);
+
+  box.replaceChildren(
+    head,
+    el('ol', { class: `splits${theirs ? ' has-ghost' : ''}` }, ...rows),
+    ...notes.map((t) => el('p', { class: 'muted small splits-note', text: t }))
+  );
+}
+
+function ordinal(n) {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] || 'th'}`;
+}
+
+/**
+ * Who was in front, and until when. Both runs are measured from the same
+ * standing start, so comparing the clock at each click is a fair race even
+ * though the two routes are different roads.
+ */
+function leadLine(result) {
+  const theirs = result.challenge?.times;
+  if (!theirs?.length || !result.won || !result.hopTimes) return null;
+
+  const cumulative = (list) => {
+    let sum = 0;
+    return list.map((ms) => (sum += ms));
+  };
+  const mine = cumulative(result.hopTimes.slice(0, result.path.length - 1));
+  const yours = cumulative(theirs);
+  const n = Math.min(mine.length, yours.length);
+  if (!n) return null;
+
+  let ahead = 0;
+  while (ahead < n && mine[ahead] < yours[ahead]) ahead++;
+  const who = result.challenge.by || 'They';
+
+  if (ahead === 0) return `⏱ ${who} led from the first click.`;
+  if (ahead === n && mine.length <= yours.length) return '⏱ You led at every click.';
+  if (ahead === n) return `⏱ You led through all ${n} of their clicks.`;
+  return `⏱ You led through ${ahead} click${ahead === 1 ? '' : 's'}, then fell behind.`;
+}
+
 /**
  * What the race was actually worth. The search takes a few seconds, so the
  * result screen goes up without it and this fills in underneath — and is
@@ -1091,7 +1401,11 @@ function revealShortestRoute(result) {
     el('p', { class: 'muted best-working' }, el('span', { class: 'spinner' }), 'Working it out…')
   );
 
-  findShortestRoute(result.start, result.target, { signal: controller.signal }).then((route) => {
+  findShortestRoute(result.start, result.target, {
+    signal: controller.signal,
+    // The best anyone could have done has to be a route they could have taken.
+    closed: result.hubBan ? closedFor(result.start, result.target) : null
+  }).then((route) => {
     if (controller.signal.aborted) return;
     box.replaceChildren(heading(), ...bestRouteBody(route, result));
   });
@@ -1116,21 +1430,39 @@ function bestRouteBody(route, result) {
     ];
   }
 
-  // Nothing in two. Whether that is a fact about Wikipedia or only about the
-  // part of it we got to read decides how firmly it can be said.
+  // Nothing found. Whether that is a fact about Wikipedia or only about the
+  // part of it the sweeps got to read decides how firmly it can be said, and
+  // the two sweeps can end in different states — hence `ruledOut` rather than
+  // a single flag.
+  const board = result.hubBan ? ' with the highways closed' : '';
+  const links = route.examined.toLocaleString();
+  const deep = (route.deepExamined || 0).toLocaleString();
+  const beyond = route.deepExamined > 0;
+
+  const [headline, detail] =
+    route.ruledOut === 3
+      ? [
+          `No route in three clicks exists${board}. Four was the best anyone could have done.`,
+          `Every one of the ${links} links out of ${result.start} was checked, and all ${deep} pages beyond them.`
+        ]
+      : route.ruledOut === 2 && beyond
+        ? [
+            `No route in two clicks exists${board}, and none turned up in three.`,
+            `All ${links} links out of ${result.start} were checked, and ${deep} of the pages beyond them — a three-click route may sit further out than the search reached.`
+          ]
+        : route.ruledOut === 2
+          ? [
+              `No route in two clicks exists${board}. Three was the best anyone could have done.`,
+              `Every one of the ${links} links out of ${result.start} was checked.`
+            ]
+          : [
+              'No route in two clicks turned up.',
+              `The first ${links} links out of ${result.start} were checked — a shorter route may sit further down.`
+            ];
+
   return [
-    el('p', {
-      class: 'best-none',
-      text: route.exhaustive
-        ? 'No route in two clicks exists. Three was the best anyone could have done.'
-        : 'No route in two clicks turned up.'
-    }),
-    el('p', {
-      class: 'muted small',
-      text: route.exhaustive
-        ? `Every one of the ${route.examined.toLocaleString()} links out of ${result.start} was checked.`
-        : `The first ${route.examined.toLocaleString()} links out of ${result.start} were checked — a shorter route may sit further down.`
-    })
+    el('p', { class: 'best-none', text: headline }),
+    el('p', { class: 'muted small', text: detail })
   ];
 }
 
@@ -1239,13 +1571,13 @@ function wireModals() {
     const target = r?.start || c?.start;
     if (!start || !target) return;
     $('#modal-result').hidden = true;
-    navigate(raceHash({ start, target, mode: 'custom' }));
+    navigate(raceHash({ start, target, mode: 'custom', hubBan: r?.hubBan ?? c?.hubBan }));
   });
 
   $('#btn-new').addEventListener('click', () => {
     const p = randomPuzzle(state.difficulty, state.lastConfig);
     $('#modal-result').hidden = true;
-    navigate(raceHash({ start: p.start, target: p.target, mode: 'random' }));
+    navigate(raceHash({ start: p.start, target: p.target, mode: 'random', hubBan: hubBanOn() }));
   });
   $('#btn-home').addEventListener('click', goHome);
 }

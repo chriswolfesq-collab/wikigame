@@ -32,8 +32,10 @@
         <li>No search box, no URL bar, no back-button-into-Google. Fewest clicks and fastest time win.</li>
         <li><strong>Back</strong> costs five seconds a step and does not undo a click. Explore as much as you like — it goes on the clock, not on your route.</li>
         <li><strong>Contents</strong> jumps to a section and <strong>Find</strong> filters the links on the page. Both are free and unlimited — knowing which link to look for is the game, hunting for it in nineteen sections is not.</li>
+        <li>With <strong>No Highways</strong> on, the biggest articles on Wikipedia are struck through and cannot be clicked. Reaching for one costs you nothing — it is simply not a road.</li>
       </ol>
-      <p class="rules-note">Everyone who opens the same challenge link races the exact same board.</p>
+      <p class="rules-note">Everyone who opens the same challenge link races the exact same board — and if
+        their run carried its pace, you race the ghost of it too.</p>
     </details>
 
     <section class="card card-daily" id="daily-card">
@@ -47,6 +49,10 @@
         <p class="muted" id="daily-status"></p>
       </div>
       <p class="crowd-line" id="daily-crowd" hidden></p>
+      <p class="muted small daily-note" id="daily-hubban" hidden>
+        No Highways is on, but the daily is always played with them open — one
+        shared board, one number to compare.
+      </p>
     </section>
 
     <section class="card">
@@ -63,6 +69,20 @@
         <button class="btn btn-ghost" id="btn-wild">Two random articles</button>
       </div>
       <p class="muted small">“Two random articles” pulls straight from Wikipedia — it can be brutal, and occasionally impossible.</p>
+    </section>
+
+    <section class="card card-mode">
+      <label class="switch switch-mode">
+        <input type="checkbox" id="opt-hubban">
+        <span><strong>No Highways</strong> — the <span id="hubban-count">30</span> biggest articles are closed</span>
+      </label>
+      <p class="muted small">
+        Every long race has the same optimal shape: climb to an article that
+        links to everything, then descend. United States, World War II, London,
+        Latin. Close those and the bridge has to be found in the subject matter
+        rather than climbed to out of it. Applies to quick races and your own
+        pairs; the daily always keeps them open.
+      </p>
     </section>
 
     <section class="card">
@@ -104,6 +124,7 @@
       <div class="settings">
         <label class="switch"><input type="checkbox" id="opt-images"> <span>Show images</span></label>
         <label class="switch"><input type="checkbox" id="opt-navboxes"> <span>Navigation boxes</span></label>
+        <label class="switch"><input type="checkbox" id="opt-ghost"> <span>Ghost pacer</span></label>
         <label class="switch select"><span>Theme</span>
           <select id="opt-theme">
             <option value="light">Light</option>
@@ -115,7 +136,10 @@
       <p class="muted small settings-note">
         Navigation boxes are the link farms at the foot of an article. Switching
         them off is the harder game — a big page can lose half its ways out — so
-        the setting you played under is recorded with each race.
+        the setting you played under is recorded with each race. The ghost pacer
+        shows how far along your challenger was at this reading on the clock; it
+        names none of their articles, and switching it off changes nothing about
+        the board.
       </p>
       <p class="muted small">
         Article text and images come live from Wikipedia and are available under
@@ -133,6 +157,10 @@
       <div class="matchup" id="challenge-matchup"></div>
       <div class="result-stats" id="challenge-stats"></div>
       <p class="muted small result-note" id="challenge-note" hidden></p>
+      <p class="muted small result-note" id="challenge-hubban" hidden>
+        Played with <strong>No Highways</strong>: the biggest articles on
+        Wikipedia are closed on this board, for them and for you.
+      </p>
 
       <details class="spoiler" id="challenge-path" hidden>
         <summary>Show the route they took <span class="spoiler-warn">spoiler</span></summary>
@@ -155,6 +183,8 @@
         <div class="hud-target">
           <span class="hud-label">Target</span>
           <strong id="hud-target-title"></strong>
+          <span class="hud-mod" id="hud-hubban" hidden
+                title="No Highways: the biggest articles on Wikipedia are closed on this board">No Highways</span>
         </div>
         <div class="hud-clock">
           <span class="hud-time" id="hud-time">0:00.0</span>
@@ -189,6 +219,13 @@
       </div>
 
       <div class="challenge-banner" id="challenge-banner" hidden></div>
+
+      <div class="ghost-line" id="ghost-line" hidden
+           title="Where your challenger was when their clock read what yours reads now.">
+        <span class="ghost-icon" id="ghost-icon">👻</span>
+        <span class="ghost-text" id="ghost-text" aria-live="polite"></span>
+        <span class="ghost-delta" id="ghost-delta" hidden></span>
+      </div>
     </div>
 
     <div class="article-wrap" id="article-wrap">

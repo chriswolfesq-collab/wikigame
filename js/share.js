@@ -6,8 +6,12 @@ import { fmtTimeShort, toUrlTitle, fromUrlTitle } from './util.js';
  * Routes:
  *   #/                          home
  *   #/race/Start/Target         open race
- *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&by=Name&p=A|B|C&daily=7
+ *   #/race/Start/Target?hb=1     open race with No Highways
+ *   #/race/Start/Target?ms=..&clicks=..&h=..&nb=0&hb=1&by=Name&p=A|B|C&t=..&daily=7
  *                               a finished run — opens on the result, then races
+ *
+ * `t` is the pace of that run: one figure per click, which is what lets the
+ * opener race the ghost rather than only the final score.
  */
 export function parseHash(hash = location.hash) {
   const raw = hash.replace(/^#\/?/, '');
@@ -26,14 +30,28 @@ export function parseHash(hash = location.hash) {
             // Absent means the default (on); only the harder board is recorded.
             navboxes: q.has('nb') ? q.get('nb') !== '0' : null,
             by: q.get('by') || null,
-            path: q.get('p') ? decodePath(q.get('p')) : null
+            path: q.get('p') ? decodePath(q.get('p')) : null,
+            times: q.has('t') ? decodeTimes(q.get('t')) : null
           }
         : null;
+
+    // The pace only means anything alongside the route it was run at. A `t`
+    // that does not line up with `p` came from a mangled link, so it is
+    // dropped rather than pinning the ghost to the wrong hops.
+    if (challenge?.times) {
+      const clicks = challenge.path ? challenge.path.length - 1 : challenge.clicks;
+      if (challenge.times.length !== clicks) challenge.times = null;
+    }
+
     return {
       route: 'race',
       start: fromUrlTitle(segs[1]),
       target: fromUrlTitle(segs[2]),
       dailyNumber: q.has('daily') ? Number(q.get('daily')) : null,
+      // Unlike `nb`, this is a property of the race rather than of whoever
+      // wrote the link: absent has always meant the highways are open, and a
+      // link that does not carry it is an ordinary race for everyone.
+      hubBan: q.get('hb') === '1',
       mode: q.get('mode') || (q.has('daily') ? 'daily' : challenge ? 'challenge' : 'custom'),
       challenge
     };
@@ -41,10 +59,11 @@ export function parseHash(hash = location.hash) {
   return { route: 'home' };
 }
 
-export function raceHash({ start, target, mode, dailyNumber }) {
+export function raceHash({ start, target, mode, dailyNumber, hubBan }) {
   const q = new URLSearchParams();
   if (dailyNumber) q.set('daily', String(dailyNumber));
   else if (mode && mode !== 'custom') q.set('mode', mode);
+  if (hubBan) q.set('hb', '1');
   const qs = q.toString();
   return `#/race/${toUrlTitle(start)}/${toUrlTitle(target)}${qs ? '?' + qs : ''}`;
 }
@@ -73,6 +92,22 @@ function decodePath(param) {
   }
 }
 
+/**
+ * The pace of a run: one figure per click, in tenths of a second, base 36.
+ * A ten-hop route costs about thirty characters — the route itself is the
+ * expensive half of the link, and this rides in behind it.
+ */
+function encodeTimes(hopTimes) {
+  return hopTimes.map((ms) => Math.max(0, Math.round(ms / 100)).toString(36)).join('.');
+}
+
+function decodeTimes(param) {
+  const parts = String(param).split('.');
+  const out = parts.map((p) => parseInt(p, 36));
+  if (!out.length || out.some((n) => !Number.isFinite(n) || n < 0)) return null;
+  return out.map((n) => n * 100);
+}
+
 export function baseUrl() {
   return location.origin + location.pathname;
 }
@@ -89,21 +124,45 @@ const MAX_URL = 1800;
  * A link that carries a finished run: the score, and the route taken so the
  * opener can reveal it once they are done arguing with it.
  */
-export function challengeUrl({ start, target, ms, clicks, hints, navboxes, by, dailyNumber, path }) {
-  const build = (withPath) => {
+export function challengeUrl({
+  start,
+  target,
+  ms,
+  clicks,
+  hints,
+  navboxes,
+  by,
+  dailyNumber,
+  hubBan,
+  path,
+  hopTimes
+}) {
+  const build = (withPath, withTimes) => {
     const q = new URLSearchParams();
     q.set('ms', String(Math.round(ms)));
     q.set('clicks', String(clicks));
     if (hints) q.set('h', String(hints));
     if (navboxes === false) q.set('nb', '0');
+    if (hubBan) q.set('hb', '1');
     if (by) q.set('by', by);
     if (dailyNumber) q.set('daily', String(dailyNumber));
-    if (withPath && path && path.length > 1) q.set('p', encodePath(path));
+    if (withPath && path && path.length > 1) {
+      q.set('p', encodePath(path));
+      // Pace without the route it was run at would be a ghost pinned to
+      // nothing, so `t` never outlives `p`.
+      if (withTimes && hopTimes && hopTimes.length >= path.length - 1) {
+        q.set('t', encodeTimes(hopTimes.slice(0, path.length - 1)));
+      }
+    }
     return `${baseUrl()}#/race/${toUrlTitle(start)}/${toUrlTitle(target)}?${q.toString()}`;
   };
 
-  const full = build(true);
-  return full.length <= MAX_URL ? full : build(false);
+  // Shed the pace first, then the route: a long run should still arrive as a
+  // score to beat rather than as a link a chat client has chopped in half.
+  for (const url of [build(true, true), build(true, false), build(false, false)]) {
+    if (url.length <= MAX_URL) return url;
+  }
+  return build(false, false);
 }
 
 // One link per click. Past the cap a chain stops reading as a shape and starts
@@ -123,13 +182,14 @@ function chain(clicks) {
  * spoil — the old share text put it in the second line. The link still carries
  * the board for anyone who wants to play it.
  */
-export function shareBlock({ ms, clicks, won, dailyNumber, hints, backs, navboxes, url }) {
+export function shareBlock({ ms, clicks, won, dailyNumber, hints, backs, navboxes, hubBan, url }) {
   const head = dailyNumber ? `The Wikipedia Game — Daily #${dailyNumber}` : 'The Wikipedia Game';
 
   const score = [`${clicks} click${clicks === 1 ? '' : 's'}`, fmtTimeShort(ms)];
   if (hints) score.push(`👁 ${hints}`);
   if (backs) score.push(`↩ ${backs}`);
   if (navboxes === false) score.push('no navboxes');
+  if (hubBan) score.push('no highways');
 
   const body = won
     ? [chain(clicks), score.join(' · ')]

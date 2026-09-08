@@ -999,3 +999,144 @@ a { color: var(--link); }
   font-size: .8rem;
   color: var(--ink-2);
 }
+
+/* ------------------------------------------------------------- the ghost -- */
+
+/* A challenge link carries the pace of the run behind it, so the challenger
+   can be raced rather than merely out-scored. This line sits under the banner
+   and says where they were at this reading on the clock — never which article
+   they were on, which would hand over the route the spoiler is hiding. */
+.ghost-line {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px;
+  margin-top: 7px; padding: 5px 12px;
+  background: var(--surface-2); border: 1px solid var(--line-2);
+  border-radius: var(--radius); font-size: .87rem; color: var(--ink-2);
+}
+.ghost-icon { flex: 0 0 auto; }
+.ghost-text { flex: 1 1 auto; min-width: 0; }
+.ghost-delta {
+  flex: 0 0 auto;
+  font-size: .78rem; font-weight: 700;
+  padding: 1px 8px; border: 1px solid var(--line-2); border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.ghost-delta.is-ahead { color: var(--good); }
+.ghost-delta.is-behind { color: var(--bad); }
+.ghost-delta.is-level { color: var(--muted); }
+
+/* Their clicks land silently otherwise — one already gone by the time you look
+   down. The wash fades out rather than blinking, so it registers at the edge
+   of vision without pulling you off the article. */
+.ghost-line.is-hop { animation: ghost-hop .9s ease-out; }
+@keyframes ghost-hop {
+  from { background: var(--link-wash); border-color: var(--primary); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ghost-line.is-hop { animation: none; }
+}
+
+/* ----------------------------------------------------------------- splits -- */
+
+/* Where the time went. Each split runs from arriving at an article to arriving
+   at the next one kept, so they tile the whole run and add up to the final
+   time — penalties included. The bar is the number beside it drawn again. */
+.splits {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+.split {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.split-n {
+  flex: 0 0 1.3rem;
+  font-size: .78rem; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.split-title { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-size: .93rem; }
+.split-flag {
+  flex: 0 0 auto;
+  font-size: .74rem; color: var(--warn); font-weight: 700;
+  cursor: help;
+}
+.split-ms {
+  flex: 0 0 auto;
+  font-size: .88rem; color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.split-ms.is-arrival { color: var(--muted); font-style: italic; }
+.split-delta {
+  flex: 0 0 auto;
+  font-size: .76rem; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.split-delta.is-good { color: var(--good); }
+.split-delta.is-bad { color: var(--bad); }
+
+/* Full-basis so the bar drops onto its own line at every width, indented to
+   clear the hop number. It shrinks, or the margin would push it off the row. */
+.split-bar {
+  flex: 1 1 100%;
+  display: flex; flex-direction: column; gap: 2px;
+  margin: 3px 0 0 calc(1.3rem + 8px);
+}
+.split-fill { height: 6px; border-radius: 3px; background: var(--primary); }
+.split-ghost { height: 4px; border-radius: 2px; background: var(--line-2); }
+
+/* The hop that cost the most is the answer to the question the result screen
+   leaves you with, so it is the one thing here that is not blue. */
+.split.is-slowest .split-fill { background: var(--warn); }
+.split.is-slowest .split-ms { color: var(--ink); font-weight: 700; }
+.splits .split:last-child { border-bottom: none; }
+.splits-note { margin: 0 0 4px; }
+#result-path .splits-note:last-child { margin-bottom: 14px; }
+
+/* ------------------------------------------------------------ No Highways -- */
+
+/* A closed link is struck through rather than removed. Knowing the road you
+   wanted is shut is part of the game this mode is asking you to play, and a
+   silently missing link would just read as a broken board. */
+.wg-article .wg-closed {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--bad);
+  text-decoration-thickness: 1px;
+  cursor: not-allowed;
+}
+
+.card-mode { padding-top: 16px; padding-bottom: 16px; }
+.switch-mode { align-items: flex-start; font-size: 1rem; margin-bottom: 6px; }
+.switch-mode strong { font-family: var(--serif); }
+.daily-note { margin: 10px 0 0; }
+
+/* The one thing in the HUD that says this board is not the ordinary one. It
+   sits beside the target rather than in the button row: it is a fact about
+   the race, not something you can press. */
+.hud-mod {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border: 1px solid var(--bad);
+  border-radius: 999px;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--bad);
+  vertical-align: 2px;
+  white-space: nowrap;
+}
+.h-mod {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border: 1px solid var(--bad);
+  border-radius: 999px;
+  font-size: .6rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--bad);
+  cursor: help;
+}

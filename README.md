@@ -15,7 +15,8 @@ back-button escape to Google.
 | **Quick race** | Random pull from a curated pool of 209 races, filterable by difficulty. It remembers what it has dealt you, so races do not come round again until you have worked through the pool. |
 | **Two random articles** | Straight from `Special:Random`. Brutal, occasionally impossible. |
 | **Build your own** | Pick any two articles, with autocomplete off the live Wikipedia index — and a difficulty estimate before you commit. |
-| **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat. |
+| **No Highways** | A switch, not a race of its own: the thirty biggest articles on Wikipedia are closed, on quick races and your own pairs. It rides in the link, so a challenge is played on the board it was set on. |
+| **Challenge link** | Finish a race and copy the link. It opens on *your result* — score, time, peeks, and your route behind a spoiler — then drops them onto the same board with your score to beat, and with your pace running alongside them as a ghost. |
 
 **Copy result** gives you a compact block for a group chat:
 
@@ -54,6 +55,12 @@ carries the board for anyone who wants to play it.
 - The HUD shows **clicks · seen** — the route you are on, and how many articles
   you have opened in all. They are the same number until you double back.
 - **Peek** shows the target's summary and adds 15 seconds to your final time.
+- With **No Highways** on, a hub article is struck through and cannot be
+  clicked. Reaching for one costs nothing — it is simply not a road.
+- Racing a challenge puts a **ghost** in the HUD: where the challenger was when
+  their clock read what yours reads now. It can be switched off in settings.
+- Every result screen breaks the run into **splits** — what each hop cost, and
+  which one cost the most.
 - **Contents** jumps to any section; **Find** filters the page down to the links
   matching what you type, and steps through them. Both are free and unlimited.
   Browser find already worked on this board, so the choice was between a hidden
@@ -140,14 +147,16 @@ Pages, S3). There is nothing to configure.
 | `js/game.js` | Race state machine — path, clock, win detection. Knows nothing about the DOM. |
 | `js/app.js` | Routing, home screen, race board, results. |
 | `js/puzzles.js` | The curated race pool and the daily schedule. |
+| `js/hubs.js` | The No Highways list: thirty hub articles and every title that redirects to one. |
 | `js/share.js` | Challenge-link encoding and share text. |
 | `js/stats.js` | Player history in `localStorage`, plus the daily runs this browser has seen. |
 | `js/scoreboard.js` | The optional shared scoreboard. Inert unless configured. |
 | `js/config.js` | Deployment settings. One of them, and it ships empty. |
 
 Routes live in the hash, so the whole thing is one static page:
-`#/race/Apple/Pearl_Harbor?daily=1`, or with a finished run attached,
-`#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&p=<route>`.
+`#/race/Apple/Pearl_Harbor?daily=1`, `#/race/Apple/Pearl_Harbor?hb=1` for a
+race with the highways closed, or with a finished run attached,
+`#/race/Apple/Pearl_Harbor?ms=102000&clicks=5&h=1&nb=0&by=Chris&hb=1&p=<route>&t=<pace>`.
 
 `mode` carries how the race was chosen — `daily`, `random` (curated pool),
 `wild` (two random articles), `challenge`, or `custom` when absent. Skip reads
@@ -158,9 +167,132 @@ from that link is played that way whatever the reader's own settings say.
 A link carrying a run opens on the challenge card rather than starting the
 race, so the reader sees what they are chasing before the clock starts. The
 route (`p`) is base64 — chat clients that print URLs in full would otherwise
-spoil the answer in the link text itself. It is dropped automatically if the
-URL would exceed 1800 characters, and a mangled `p` degrades to no route rather
-than breaking the link.
+spoil the answer in the link text itself. `t` is the pace of the run: one
+figure per click, in tenths of a second, base 36. Past 1800 characters the pace
+is shed first and then the route, so a long run still arrives as a score to
+beat rather than as a link a chat client has chopped in half. A mangled `p`
+degrades to no route rather than breaking the link, and a `t` whose length does
+not line up with the route it arrived with is dropped rather than pinned to the
+wrong hops.
+
+### No Highways
+
+Every long race on Wikipedia has the same optimal shape: climb to an article
+that links to everything, then descend. United States, World War II, London,
+Latin — reach one of those and the rest of the board opens up, whatever the two
+articles were. It is a real strategy, it works from almost anywhere, and it is
+the same strategy every time.
+
+Switch No Highways on and the thirty of them in `js/hubs.js` are closed. They
+are struck through on the page rather than deleted: knowing that the road you
+wanted is shut is part of the game this mode is asking you to play, and a
+silently missing link would just read as a broken board. The tally at the top
+of each article says what it cost that page — *"848 links out of here, 5
+closed"*.
+
+They are chosen for being both enormous and generic — the pages a player heads
+for when they have no better idea, rather than simply the most-linked articles
+on Wikipedia, which are things like `Geographic coordinate system`, linked by
+infobox furniture nobody routes through on purpose.
+
+**A link to `USA` is a link to United States**, so closing a hub means closing
+every title that redirects to it — about seventeen hundred of them. Those are
+generated from Wikipedia rather than guessed at:
+
+```bash
+node tools/build-hubs.mjs          # print what would change
+node tools/build-hubs.mjs --write  # write it into js/hubs.js
+```
+
+They are written into the source rather than looked up at race time, because
+the board has to be identical for two people opening the same link and it has
+to be there before the first article renders. The tool also refuses to write a
+hub that has become a redirect, a disambiguation page, or nothing at all.
+
+The list can still drift — a redirect created after it was generated is a link
+the board cannot see through — so the **rule** is enforced one step later, on
+arrival: the title Wikipedia hands back is the one that is checked. A move
+refused there costs nothing, and every copy of that link on the page is struck
+through as it happens, so the board catches up rather than offering it again.
+
+A race's own two articles are never closed. Racing *to* a hub is a perfectly
+good race — it is routing *through* one that this mode is about — and a target
+nobody can arrive at is not a race at all. Both endpoints are excluded by their
+resolved names, along with every way of writing them, so `Sushi → USA` leaves
+`U.S.` clickable and everything else shut.
+
+The shortest route is computed against the same closed graph: a hop through an
+article the player could not have taken is not one the result screen offers
+them. Answers are cached separately from the ordinary board's.
+
+`hb=1` rides in the race hash, which is what makes it a property of the race
+rather than of whoever is reading. A challenge link written on a closed board
+is played on a closed board whatever the reader's own switch says, and one
+written before `hb` existed — or with the switch off — is an ordinary race for
+everyone. The switch on the home screen is only the default for races started
+from there.
+
+**The daily never uses it.** It is one shared board, and a run on a smaller
+graph stored against Daily #12 would be a different race wearing the same
+number — in your record, in your streak, and in the median. The daily card says
+so when the switch is on.
+
+### Splits
+
+Clicks and a final time say what a run cost but not where it went. Every result
+screen breaks the route into the time spent on each article, bar by bar, with
+the longest stop named underneath:
+
+```
+1  Apple    0:28.9  ████████████████
+2  Malus    0:24.9  ██████████████
+3  Apple    0:07.8  ████
+🏁 Fruit    arrived
+
+Longest stop: Apple — 0:28.9, 47% of the run.
+```
+
+A split runs from arriving somewhere to arriving at the next article you
+*kept*, so an excursion that was rewound is charged to the article it was
+launched from — which is where the decision was actually made. The row is
+marked `↩` so the number reads as a detour rather than as deliberation. That
+makes the splits tile the whole run: they add up to the final time, peek and
+back penalties included.
+
+Arriving at the target ends the race, so the last article is an arrival rather
+than a stay — unless the run ended there by giving up, which it very much was,
+and that split is usually the longest one on the board.
+
+### The ghost
+
+A challenge link carries the pace of the run that made it, so the challenger
+can be *raced* rather than merely out-scored. The HUD says where they were when
+their clock read what yours reads now:
+
+```
+👻 Chris was 2 clicks in by now.                     −1 on their pace
+🏁 Chris had finished by now — 3 clicks in 0:40.         7.9s behind
+```
+
+It names none of their articles. The only thing it adds to what the challenge
+card already showed is *when* they got their clicks in, so racing the ghost
+gives away nothing that accepting the challenge did not — the route stays
+behind its spoiler. Their hops land silently otherwise, so the line takes a
+brief wash of colour as each one goes by, which `prefers-reduced-motion` turns
+off.
+
+The sentence sits in a live region and is only rewritten when it changes; the
+delta beside it moves ten times a second and is deliberately left outside that
+region. **Ghost pacer** in settings switches the whole line off. It changes
+nothing about the board — unlike navigation boxes, it is not a difficulty
+setting — so it is not recorded with a result.
+
+On the result screen the same pace becomes a second, fainter bar under each of
+your splits, with the gap per hop beside it, and one line saying who led and
+until when. That comparison is drawn from the link rather than from the live
+ghost, so it still appears with the pacer switched off. Links written before
+`t` existed carry no pace: no ghost, no second bar, and the rest of the
+challenge behaves exactly as it did.
 
 ### The shortest route
 
@@ -176,11 +308,36 @@ returning 429. Feeding the start's link list into a filtered link query with
 so a whole two-hop search costs three or four. Rate-limit responses are retried
 with a backoff rather than surfaced as errors.
 
-Hop three is not attempted: the frontier is tens of thousands of pages, and
-guessing would be worse than declining. So the screen says only what was proved
-— a route when one is found, and "no route in two clicks exists" only when the
-sweep actually ran to the end. If it was cut short, it says that instead.
-Answers are cached in `localStorage`, keyed by the pair.
+Hop three used to be declined, on the grounds that expanding each of those five
+hundred links on its own would be five hundred more requests. It turns out
+`generator=links` takes **fifty source pages at once**, so fifty of them can be
+expanded together and the five hundred pages they reach answered in the same
+request — the trick hop two already used, one level deeper. A three-hop answer
+costs a couple of dozen requests, paced a quarter of a second apart to stay
+inside what the anonymous API will take.
+
+That matters most for the races that need it. Hard pairs and No Highways both
+push real routes out past two hops, which is exactly where the old search went
+quiet.
+
+Depth is not free even so: the third hop's frontier is tens of thousands of
+pages and the sweep is bounded, so it usually stops long before it has seen all
+of them. That changes what can be *claimed*, not what can be found. A route it
+returns is real, and the shallower sweeps ran first, so it is genuinely the
+shortest. Absence is only ever reported for a depth whose sweep actually ran to
+the end — `ruledOut` in the result says which:
+
+| `ruledOut` | What the screen says |
+| --- | --- |
+| `3` | No route in three clicks exists. Four was the best anyone could have done. |
+| `2` | No route in two exists, and none turned up in three — with the count of what was checked, and that a three-click route may sit further out. |
+| `0` | Even the two-hop sweep was cut short. "No route in two clicks turned up." |
+
+Depth is also the optional half of the search: if it is throttled or the
+connection drops, the deep sweep is abandoned and the shallow answer — which is
+proved — is reported on its own rather than the whole thing failing. Answers are
+cached in `localStorage`, keyed by the pair and by whether the highways were
+closed.
 
 Routes are computed over Wikipedia's own link table, which includes links from
 navigation boxes. With navboxes switched off in settings, a suggested route may
@@ -252,7 +409,10 @@ know whether you have set yourself a warm-up or a wall: *"Lego → Cleopatra: tw
 clicks apart, if you find the right bridge."* It is debounced hard and skips
 pairs it has already answered — an estimate costs a handful of API calls, and a
 race in progress needs them more, so a pending one is cancelled the moment a
-race starts.
+race starts. Now that the search reaches three hops it can tell a wall from a
+hunt — *"nothing inside three clicks"* is a different warning from *"nothing
+inside two"* — and it sizes the pair up against the board it will be played on,
+so turning No Highways on changes the estimate.
 
 ### The daily schedule
 
@@ -293,6 +453,9 @@ disambiguation page, and be canonical rather than a redirect:
 ```bash
 node tools/check-puzzles.mjs
 ```
+
+The same goes for the hub list, which `tools/build-hubs.mjs` validates before
+it writes anything.
 
 ## Attribution
 

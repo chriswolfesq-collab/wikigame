@@ -12,10 +12,13 @@ const articleCache = new Map();
 // wedged request surfaces as an error instead of an endless spinner.
 const TIMEOUT_MS = 20000;
 
-// Anonymous callers get throttled, and the route search runs a burst of them.
-// Backing off and retrying turns a 429 into a slower answer instead of an error.
+// Anonymous callers get throttled, and the route search runs a burst of them —
+// two dozen once it goes three hops deep. Backing off and retrying turns a 429
+// into a slower answer instead of an error, and none of this costs anything on
+// a request that succeeds.
 const RETRY_STATUS = new Set([429, 502, 503, 504]);
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 5;
+const MAX_BACKOFF_MS = 5000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -27,7 +30,8 @@ async function getJson(url) {
       const res = await fetch(url, { signal: controller.signal, credentials: 'omit' });
       if (RETRY_STATUS.has(res.status) && attempt < MAX_RETRIES) {
         const after = Number(res.headers.get('retry-after'));
-        await sleep(after > 0 ? Math.min(after * 1000, 5000) : 400 * 2 ** attempt);
+        const backoff = after > 0 ? after * 1000 : 400 * 2 ** attempt;
+        await sleep(Math.min(backoff, MAX_BACKOFF_MS));
         continue;
       }
       if (!res.ok) throw new Error(`Wikipedia returned ${res.status}.`);
@@ -218,6 +222,56 @@ export async function fetchLinkFanout(title, targets, cont = null) {
     linksToTarget: Boolean(p.links?.length)
   }));
   return { pages, cont: data.continue || null };
+}
+
+/**
+ * The same trick one hop deeper: `generator=links` run from up to fifty source
+ * pages at once, each page it generates already answered for "and does *that*
+ * page link to any of `targets`?".
+ *
+ * This is what makes a three-hop search possible at all. Asking each of the
+ * first hop's five hundred links what *it* links to would be five hundred
+ * requests; generating from fifty of them at a time settles five hundred
+ * third-hop candidates per request instead.
+ *
+ * The generator does not say which source produced which page, so a hit has to
+ * be attributed afterwards — see `linkFrom`.
+ */
+export async function fetchDeepFanout(sources, targets, cont = null) {
+  const data = await apiGet({
+    action: 'query',
+    titles: sources.slice(0, 50).join('|'),
+    generator: 'links',
+    gplnamespace: '0',
+    gpllimit: 'max',
+    prop: 'links',
+    pltitles: targets.join('|'),
+    pllimit: 'max',
+    redirects: '1',
+    ...(cont || {})
+  });
+  const pages = (data.query?.pages || []).map((p) => ({
+    title: p.title,
+    linksToTarget: Boolean(p.links?.length)
+  }));
+  return { pages, cont: data.continue || null };
+}
+
+/**
+ * Which of `sources` links to `title`. The deep sweep finds the second hop of
+ * a three-hop route but not the first, so this asks the fifty candidates that
+ * could have produced it which one actually did.
+ */
+export async function linkFrom(sources, title) {
+  const data = await apiGet({
+    action: 'query',
+    titles: sources.slice(0, 50).join('|'),
+    prop: 'links',
+    pltitles: title,
+    pllimit: 'max',
+    redirects: '1'
+  });
+  return (data.query?.pages || []).find((p) => p.links?.length)?.title || null;
 }
 
 /** Titles that redirect to `title`. A link to any of them is a link to it. */
