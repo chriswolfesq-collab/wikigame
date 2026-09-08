@@ -614,10 +614,11 @@ function difficultyLine(start, target, route) {
   if (route.error) return '';
   if (route.hops === 1) return `${pair}: one click apart. A warm-up.`;
   if (route.hops === 2) return `${pair}: two clicks apart, if you find the right bridge.`;
-  // Only the finished sweep earns the firm version.
-  return route.exhaustive
-    ? `${pair}: nothing inside two clicks. A proper hunt.`
-    : `${pair}: further than two clicks, as far as could be checked.`;
+  if (route.hops === 3) return `${pair}: three clicks apart. Two bridges to find, not one.`;
+  // Only a sweep that ran to the end earns the firm version.
+  if (route.ruledOut === 3) return `${pair}: nothing inside three clicks. A wall.`;
+  if (route.ruledOut === 2) return `${pair}: nothing inside two clicks. A proper hunt.`;
+  return `${pair}: further than two clicks, as far as could be checked.`;
 }
 
 /** Exact title first; fall back to the top search hit so half-typed input works. */
@@ -1429,21 +1430,39 @@ function bestRouteBody(route, result) {
     ];
   }
 
-  // Nothing in two. Whether that is a fact about Wikipedia or only about the
-  // part of it we got to read decides how firmly it can be said.
+  // Nothing found. Whether that is a fact about Wikipedia or only about the
+  // part of it the sweeps got to read decides how firmly it can be said, and
+  // the two sweeps can end in different states — hence `ruledOut` rather than
+  // a single flag.
+  const board = result.hubBan ? ' with the highways closed' : '';
+  const links = route.examined.toLocaleString();
+  const deep = (route.deepExamined || 0).toLocaleString();
+  const beyond = route.deepExamined > 0;
+
+  const [headline, detail] =
+    route.ruledOut === 3
+      ? [
+          `No route in three clicks exists${board}. Four was the best anyone could have done.`,
+          `Every one of the ${links} links out of ${result.start} was checked, and all ${deep} pages beyond them.`
+        ]
+      : route.ruledOut === 2 && beyond
+        ? [
+            `No route in two clicks exists${board}, and none turned up in three.`,
+            `All ${links} links out of ${result.start} were checked, and ${deep} of the pages beyond them — a three-click route may sit further out than the search reached.`
+          ]
+        : route.ruledOut === 2
+          ? [
+              `No route in two clicks exists${board}. Three was the best anyone could have done.`,
+              `Every one of the ${links} links out of ${result.start} was checked.`
+            ]
+          : [
+              'No route in two clicks turned up.',
+              `The first ${links} links out of ${result.start} were checked — a shorter route may sit further down.`
+            ];
+
   return [
-    el('p', {
-      class: 'best-none',
-      text: route.exhaustive
-        ? `No route in two clicks exists${result.hubBan ? ' with the highways closed' : ''}. Three was the best anyone could have done.`
-        : 'No route in two clicks turned up.'
-    }),
-    el('p', {
-      class: 'muted small',
-      text: route.exhaustive
-        ? `Every one of the ${route.examined.toLocaleString()} links out of ${result.start} was checked.`
-        : `The first ${route.examined.toLocaleString()} links out of ${result.start} were checked — a shorter route may sit further down.`
-    })
+    el('p', { class: 'best-none', text: headline }),
+    el('p', { class: 'muted small', text: detail })
   ];
 }
 

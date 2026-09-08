@@ -308,11 +308,36 @@ returning 429. Feeding the start's link list into a filtered link query with
 so a whole two-hop search costs three or four. Rate-limit responses are retried
 with a backoff rather than surfaced as errors.
 
-Hop three is not attempted: the frontier is tens of thousands of pages, and
-guessing would be worse than declining. So the screen says only what was proved
-— a route when one is found, and "no route in two clicks exists" only when the
-sweep actually ran to the end. If it was cut short, it says that instead.
-Answers are cached in `localStorage`, keyed by the pair.
+Hop three used to be declined, on the grounds that expanding each of those five
+hundred links on its own would be five hundred more requests. It turns out
+`generator=links` takes **fifty source pages at once**, so fifty of them can be
+expanded together and the five hundred pages they reach answered in the same
+request — the trick hop two already used, one level deeper. A three-hop answer
+costs a couple of dozen requests, paced a quarter of a second apart to stay
+inside what the anonymous API will take.
+
+That matters most for the races that need it. Hard pairs and No Highways both
+push real routes out past two hops, which is exactly where the old search went
+quiet.
+
+Depth is not free even so: the third hop's frontier is tens of thousands of
+pages and the sweep is bounded, so it usually stops long before it has seen all
+of them. That changes what can be *claimed*, not what can be found. A route it
+returns is real, and the shallower sweeps ran first, so it is genuinely the
+shortest. Absence is only ever reported for a depth whose sweep actually ran to
+the end — `ruledOut` in the result says which:
+
+| `ruledOut` | What the screen says |
+| --- | --- |
+| `3` | No route in three clicks exists. Four was the best anyone could have done. |
+| `2` | No route in two exists, and none turned up in three — with the count of what was checked, and that a three-click route may sit further out. |
+| `0` | Even the two-hop sweep was cut short. "No route in two clicks turned up." |
+
+Depth is also the optional half of the search: if it is throttled or the
+connection drops, the deep sweep is abandoned and the shallow answer — which is
+proved — is reported on its own rather than the whole thing failing. Answers are
+cached in `localStorage`, keyed by the pair and by whether the highways were
+closed.
 
 Routes are computed over Wikipedia's own link table, which includes links from
 navigation boxes. With navboxes switched off in settings, a suggested route may
@@ -384,7 +409,10 @@ know whether you have set yourself a warm-up or a wall: *"Lego → Cleopatra: tw
 clicks apart, if you find the right bridge."* It is debounced hard and skips
 pairs it has already answered — an estimate costs a handful of API calls, and a
 race in progress needs them more, so a pending one is cancelled the moment a
-race starts.
+race starts. Now that the search reaches three hops it can tell a wall from a
+hunt — *"nothing inside three clicks"* is a different warning from *"nothing
+inside two"* — and it sizes the pair up against the board it will be played on,
+so turning No Highways on changes the estimate.
 
 ### The daily schedule
 
